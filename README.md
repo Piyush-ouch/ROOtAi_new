@@ -166,6 +166,27 @@ software_proto/
 
 ## Deployment
 
+### Railway Deployment (Recommended)
+
+1. **Connect Repository**
+   - Go to [Railway.app](https://railway.app)
+   - Connect your GitHub repository
+   - Select the `AgroDoot-first-prototype` repository
+
+2. **Set Environment Variables**
+   ```
+   FIREBASE_RTDB_URL=your_firebase_rtdb_url
+   FLASK_DEBUG=False
+   ```
+
+3. **Add Firebase Credentials**
+   - Upload `serviceAccountKey.json` as a secret file in Railway dashboard
+   - Or set Firebase credentials as environment variables
+
+4. **Deploy**
+   - Railway will automatically deploy on git push
+   - The app will be available at the provided Railway URL
+
 ### Production Considerations
 - Set up proper Firebase security rules
 - Use environment variables for sensitive configuration
@@ -173,7 +194,7 @@ software_proto/
 - Set up HTTPS for secure communication
 - Configure CORS for production domains
 
-### Cloud Deployment
+### Other Cloud Platforms
 - Deploy Flask app to services like Heroku, AWS, or Google Cloud
 - Set up Firebase project for production
 - Configure domain and SSL certificates
