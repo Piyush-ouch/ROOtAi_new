@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROOTAI - Precision Agriculture Platform</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    
+    <!-- Custom Styles -->
+    <style>
+        .leaflet-container {
+            height: 400px;
+            width: 100%;
+        }
+        
+        .hardware-marker {
+            background-color: #3b82f6;
+            border: 3px solid #1e40af;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+        }
+        
+        .alert-zone {
+            fillColor: '#ef4444';
+            fillOpacity: 0.3;
+            color: '#dc2626';
+            weight: 2;
+        }
+        
+        .field-boundary {
+            fillColor: '#10b981';
+            fillOpacity: 0.2;
+            color: '#059669';
+            weight: 2;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Navigation -->
+    <nav class="bg-white shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <h1 class="text-2xl font-bold text-green-600">ROOTAI</h1>
+                    <span class="ml-2 text-sm text-gray-500">Precision Agriculture</span>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <button id="connectDootBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
+                        Connect with DOOT
+                    </button>
+                    <button id="uploadImageBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors">
+                        Upload Leaf Image
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <!-- Status Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="p-2 bg-blue-100 rounded-lg">
+                        <svg class="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-500">Temperature</p>
+                        <p id="temperatureValue" class="text-2xl font-semibold text-gray-900">--°C</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="p-2 bg-green-100 rounded-lg">
+                        <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z"></path>
+                        </svg>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-500">Humidity</p>
+                        <p id="humidityValue" class="text-2xl font-semibold text-gray-900">--%</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="p-2 bg-yellow-100 rounded-lg">
+                        <svg class="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"></path>
+                        </svg>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-500">Soil Moisture</p>
+                        <p id="soilMoistureValue" class="text-2xl font-semibold text-gray-900">--%</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex items-center">
+                    <div class="p-2 bg-purple-100 rounded-lg">
+                        <svg class="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                        </svg>
+                    </div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-500">pH Level</p>
+                        <p id="phValue" class="text-2xl font-semibold text-gray-900">--</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Dashboard Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Map Section -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="p-6 border-b border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-900">Field Map</h2>
+                    <p class="text-sm text-gray-500">Monitor your field boundaries and device locations</p>
+                </div>
+                <div class="p-6">
+                    <div id="map" class="leaflet-container rounded-lg"></div>
+                    <div class="mt-4 flex flex-wrap gap-2">
+                        <button id="drawFieldBtn" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm transition-colors">
+                            Draw Field Boundary
+                        </button>
+                        <button id="saveFieldBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors">
+                            Save Field
+                        </button>
+                        <button id="clearMapBtn" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm transition-colors">
+                            Clear Map
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Alerts Section -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="p-6 border-b border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-900">Active Alerts</h2>
+                    <p class="text-sm text-gray-500">Real-time notifications and recommendations</p>
+                </div>
+                <div class="p-6">
+                    <div id="alertsContainer" class="space-y-4">
+                        <div class="text-center text-gray-500 py-8">
+                            <svg class="w-12 h-12 mx-auto mb-4 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            <p>No active alerts</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <!-- Sensor Data Chart -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="p-6 border-b border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-900">Sensor Data Trends</h2>
+                    <p class="text-sm text-gray-500">Historical sensor readings over time</p>
+                </div>
+                <div class="p-6">
+                    <canvas id="sensorChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+
+            <!-- Market Trends -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="p-6 border-b border-gray-200">
+                    <h2 class="text-xl font-semibold text-gray-900">Market Trends</h2>
+                    <p class="text-sm text-gray-500">Current commodity prices and trends</p>
+                </div>
+                <div class="p-6">
+                    <div id="marketTrendsContainer" class="space-y-4">
+                        <div class="text-center text-gray-500 py-4">
+                            <p>Loading market data...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sensor Data History Chart -->
+        <div class="mt-8 bg-white rounded-lg shadow">
+            <div class="p-6 border-b border-gray-200">
+                <h2 class="text-xl font-semibold text-gray-900">Sensor Data History</h2>
+                <p class="text-sm text-gray-500">Historical sensor readings from your IoT devices</p>
+            </div>
+            <div class="p-6">
+                <canvas id="sensorHistoryChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+
+        <!-- Field Management Section -->
+        <div class="mt-8 bg-white rounded-lg shadow">
+            <div class="p-6 border-b border-gray-200">
+                <h2 class="text-xl font-semibold text-gray-900">Field Management</h2>
+                <p class="text-sm text-gray-500">Manage your fields and view detailed information</p>
+            </div>
+            <div class="p-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="border border-gray-200 rounded-lg p-4">
+                        <h3 class="font-medium text-gray-900">Field Information</h3>
+                        <div id="fieldInfo" class="mt-2 text-sm text-gray-600">
+                            <p>No field selected</p>
+                        </div>
+                    </div>
+                    <div class="border border-gray-200 rounded-lg p-4">
+                        <h3 class="font-medium text-gray-900">Device Status</h3>
+                        <div id="deviceStatus" class="mt-2 text-sm text-gray-600">
+                            <p>No device connected</p>
+                        </div>
+                    </div>
+                    <div class="border border-gray-200 rounded-lg p-4">
+                        <h3 class="font-medium text-gray-900">Recent Activity</h3>
+                        <div id="recentActivity" class="mt-2 text-sm text-gray-600">
+                            <p>No recent activity</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden file input for image upload -->
+    <input type="file" id="imageUpload" accept="image/*" style="display: none;">
+
+    <!-- JavaScript -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
+
+

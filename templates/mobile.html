@@ -1,0 +1,947 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROOTAI - Precision Agriculture</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <style>
+        /* Custom styles for mobile-first design */
+        .mobile-container {
+            max-width: 375px;
+            margin: 0 auto;
+            min-height: 100vh;
+            background: #f8fafc;
+        }
+        
+        .status-bar {
+            height: 44px;
+            background: #000;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 375px;
+            background: white;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-around;
+            padding: 12px 0;
+            z-index: 1000;
+        }
+        
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: #6b7280;
+            font-size: 12px;
+        }
+        
+        .nav-item.active {
+            color: #10b981;
+        }
+        
+        .nav-icon {
+            width: 24px;
+            height: 24px;
+        }
+        
+        .screen {
+            display: none;
+            padding: 20px;
+            padding-bottom: 80px;
+        }
+        
+        .screen.active {
+            display: block;
+        }
+        
+        .header-bar {
+            background: #10b981;
+            color: white;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin: -20px -20px 20px -20px;
+        }
+        
+        .back-btn {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+        }
+        
+        .sensor-card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .sensor-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        
+        .sensor-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1f2937;
+        }
+        
+        .trend-indicator {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .trend-up {
+            color: #10b981;
+        }
+        
+        .trend-down {
+            color: #ef4444;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 20px;
+        }
+        
+        .feature-card {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .feature-card:hover {
+            border-color: #10b981;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .feature-icon {
+            width: 32px;
+            height: 32px;
+            margin: 0 auto 8px;
+            color: #10b981;
+        }
+        
+        .connect-btn {
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 16px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            width: 100%;
+            margin-bottom: 12px;
+            cursor: pointer;
+        }
+        
+        .connect-btn:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        
+        .connection-status {
+            text-align: center;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 20px;
+        }
+        
+        .connected {
+            color: #10b981;
+        }
+        
+        .disconnected {
+            color: #ef4444;
+        }
+        
+        .field-selector {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .field-map {
+            background: #f3f4f6;
+            border-radius: 12px;
+            height: 200px;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+            min-height: 200px;
+            width: 100%;
+        }
+        
+        .field-map .leaflet-container {
+            height: 100%;
+            width: 100%;
+            border-radius: 12px;
+        }
+        
+        .chart-container {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .chart-scroll {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        .chart-inner-wide {
+            width: 900px; /* wider than phone to allow horizontal scroll */
+            max-width: 1200px;
+        }
+        
+        .upload-area {
+            border: 2px dashed #d1d5db;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+            background: #f9fafb;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .upload-area:hover {
+            border-color: #10b981;
+            background: #f0fdf4;
+        }
+        
+        .disease-result {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        
+        .confidence-badge {
+            background: #10b981;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .stat-item {
+            background: white;
+            border-radius: 8px;
+            padding: 12px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #1f2937;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 4px;
+        }
+        
+        .alert-card {
+            background: white;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #10b981;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        .alert-card.critical {
+            border-left-color: #ef4444;
+            background: #fef2f2;
+        }
+        
+        .alert-card.warning {
+            border-left-color: #f59e0b;
+            background: #fffbeb;
+        }
+        
+        .alert-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 8px;
+        }
+        
+        .alert-icon {
+            font-size: 20px;
+        }
+        
+        .alert-message {
+            font-weight: 600;
+            color: #1f2937;
+            font-size: 16px;
+        }
+        
+        .alert-recommendation {
+            font-size: 14px;
+            color: #6b7280;
+            line-height: 1.4;
+        }
+        
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="mobile-container">
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <span>9:41</span>
+            <div class="flex items-center gap-1">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/>
+                </svg>
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clip-rule="evenodd"/>
+                </svg>
+                <span>100%</span>
+            </div>
+        </div>
+
+        <!-- Splash Screen -->
+        <div id="splash-screen" class="screen active">
+            <div class="flex flex-col items-center justify-center h-full text-center px-8">
+                <div class="mb-8">
+                    <!-- AgroDoot Logo -->
+                    <div class="flex items-center justify-center mb-4">
+                        <img src="/uploads/AgroDoot.png" alt="AgroDoot Logo" class="w-16 h-16 object-contain mr-3">
+                        <div class="text-3xl font-bold text-green-600">AgroDoot</div>
+                    </div>
+                    <p class="text-green-600 text-lg">The truth is in the roots.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Login Screen -->
+        <div id="login-screen" class="screen">
+            <div class="px-6 py-8">
+                <!-- Logo -->
+                <div class="flex items-center justify-center mb-8">
+                    <img src="static/uploads/AgroDoot.png" alt="AgroDoot Logo" class="web_logo"><br>
+                    <!-- <h5 class="logo-text" style="color: #10b981; ">The truth is in the roots.</h5> -->
+                    <!-- <div class="text-2xl font-bold text-green-600">AgroDoot</div> -->
+                </div>
+
+                <!-- Navigation Tabs -->
+                <div class="flex border-b border-gray-200 mb-6">
+                    <button id="login-tab" class="flex-1 py-3 text-center text-green-600 font-medium border-b-2 border-green-600">
+                        Log in
+                    </button>
+                    <button id="signup-tab" class="flex-1 py-3 text-center text-gray-500 font-medium">
+                        Sign up
+                    </button>
+                </div>
+
+                <!-- Login Form -->
+                <div id="login-form">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Your Email</label>
+                        <input type="email" id="login-email" class="w-full p-3 border border-gray-300 rounded-lg" placeholder="contact@gmail.com" value="contact@gmail.com">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                        <div class="relative">
+                            <input type="password" id="login-password" class="w-full p-3 border border-gray-300 rounded-lg pr-10" placeholder="*********">
+                            <button type="button" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                                    <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="mt-2">
+                            <span class="text-sm text-gray-500">Wrong password</span>
+                            <a href="#" id="forgot-password-link" class="text-sm text-blue-600 ml-4">Forgot password?</a>
+                        </div>
+                    </div>
+                    <button id="login-continue-btn" class="w-full bg-green-600 text-white py-3 rounded-lg font-medium mb-4">
+                        Continue
+                    </button>
+                </div>
+
+                <!-- Signup Form (Hidden by default) -->
+                <div id="signup-form" class="hidden">
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Your Name</label>
+                        <input type="text" id="signup-name" class="w-full p-3 border border-gray-300 rounded-lg" placeholder="Enter your name.....">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Your Email</label>
+                        <input type="email" id="signup-email" class="w-full p-3 border border-gray-300 rounded-lg" placeholder="Enter your Email....">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Create Password</label>
+                        <div class="relative">
+                            <input type="password" id="signup-password" class="w-full p-3 border border-gray-300 rounded-lg pr-10" placeholder="Enter your Password....">
+                            <button type="button" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                                    <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <button id="signup-continue-btn" class="w-full bg-green-600 text-white py-3 rounded-lg font-medium mb-4">
+                        Continue
+                    </button>
+                </div>
+
+                <!-- Divider -->
+                <div class="flex items-center my-6">
+                    <div class="flex-1 border-t border-gray-300"></div>
+                    <span class="px-4 text-sm text-gray-500">Or</span>
+                    <div class="flex-1 border-t border-gray-300"></div>
+                </div>
+
+                <!-- Footer -->
+                <div class="text-center">
+                    <span class="text-sm text-gray-600">Don't have an account? </span>
+                    <a href="#" id="signup-link" class="text-sm text-blue-600">Sign up</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Forgot Password Screen -->
+        <div id="forgot-password-screen" class="screen">
+            <div class="px-6 py-8">
+                <!-- Back Button -->
+                <button id="forgot-back-btn" class="mb-6">
+                    <svg class="w-6 h-6 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/>
+                    </svg>
+                </button>
+
+                <!-- Logo -->
+                <div class="flex items-center justify-center mb-6">
+                    <img src="/uploads/AgroDoot.png" alt="AgroDoot Logo" class="w-10 h-10 object-contain mr-2">
+                    <div class="text-xl font-bold text-green-600">AgroDoot</div>
+                </div>
+
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Forgot password</h2>
+                <p class="text-gray-600 mb-8">Please enter your email to reset the password</p>
+
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Your Email</label>
+                    <input type="email" id="forgot-email" class="w-full p-3 border border-gray-300 rounded-lg" placeholder="contact@gmail.com" value="contact@gmail.com">
+                </div>
+
+                <button id="reset-password-btn" class="w-full bg-green-600 text-white py-3 rounded-lg font-medium">
+                    Reset Password
+                </button>
+            </div>
+        </div>
+
+        <!-- Set New Password Screen -->
+        <div id="set-password-screen" class="screen">
+            <div class="px-6 py-8">
+                <!-- Back Button -->
+                <button id="set-password-back-btn" class="mb-6">
+                    <svg class="w-6 h-6 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/>
+                    </svg>
+                </button>
+
+                <!-- Logo -->
+                <div class="flex items-center justify-center mb-6">
+                    <img src="/uploads/AgroDoot.png" alt="AgroDoot Logo" class="w-10 h-10 object-contain mr-2">
+                    <div class="text-xl font-bold text-green-600">AgroDoot</div>
+                </div>
+
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Set a new password</h2>
+                <p class="text-gray-600 mb-8">Create a new password. Ensure it differs from previous ones for security</p>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                    <div class="relative">
+                        <input type="password" id="new-password" class="w-full p-3 border border-gray-300 rounded-lg pr-10" placeholder=".........">
+                        <button type="button" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                                <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Confirm Password</label>
+                    <div class="relative">
+                        <input type="password" id="confirm-password" class="w-full p-3 border border-gray-300 rounded-lg pr-10" placeholder=".........">
+                        <button type="button" class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                                <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <button id="set-password-continue-btn" class="w-full bg-green-600 text-white py-3 rounded-lg font-medium">
+                    Continue
+                </button>
+            </div>
+        </div>
+
+        <!-- Success Screen -->
+        <div id="success-screen" class="screen">
+            <div class="flex flex-col items-center justify-center h-full text-center px-8">
+                <div class="mb-6">
+                    <img src="/uploads/AgroDoot.png" alt="AgroDoot Logo" class="w-16 h-16 object-contain mx-auto mb-4">
+                    <div class="w-20 h-20 bg-green-500 rounded-full flex items-center justify-center mx-auto">
+                        <svg class="w-10 h-10 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                    </div>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 mb-2">Successful</h2>
+                <p class="text-gray-600 mb-8">Congratulations! Your password has been changed. Click continue to login</p>
+                <button id="success-continue-btn" class="w-full bg-green-600 text-white py-3 rounded-lg font-medium">
+                    Continue
+                </button>
+            </div>
+        </div>
+
+        <!-- Home Screen -->
+        <div id="home-screen" class="screen">
+            <div class="text-center mb-6">
+                <h1 class="text-2xl font-bold text-gray-800 mb-2">Weather</h1>
+                <div class="text-3xl font-bold text-gray-800">32°C</div>
+                <div class="text-gray-600">Pune, Maharashtra</div>
+            </div>
+
+            <!-- Alerts Container -->
+            <div id="alerts-container" class="mb-4">
+                <!-- Alerts will be populated here -->
+            </div>
+
+            <button id="connect-doot-btn" class="connect-btn">
+                Connect with DOOT
+            </button>
+
+            <div id="connection-status" class="connection-status disconnected">
+                Currently Disconnected
+            </div>
+
+            <div class="field-map" id="field-map">
+                <div id="map-loading" class="flex items-center justify-center h-full text-gray-500">
+                    <div class="text-center">
+                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-2"></div>
+                        <div>Loading map...</div>
+                    </div>
+                </div>
+                <div id="map-error" class="flex items-center justify-center h-full text-red-500" style="display: none;">
+                    <div class="text-center">
+                        <div class="text-4xl mb-2">🗺️</div>
+                        <div class="mb-2">Map failed to load</div>
+                        <button id="retry-map-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm">
+                            Retry
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="grid grid-cols-3 gap-2 mb-4">
+                <button id="locate-btn" class="w-full py-2 rounded-lg border border-gray-300 bg-white text-gray-800">Use My Location</button>
+                <button id="draw-field-btn" class="w-full py-2 rounded-lg border border-gray-300 bg-white text-gray-800">Draw Field</button>
+                <button id="save-field-btn" class="w-full py-2 rounded-lg bg-emerald-600 text-white disabled:bg-gray-300" disabled>Save Field</button>
+            </div>
+
+            <div class="feature-grid">
+                <div class="feature-card" onclick="showScreen('field-analytics')">
+                    <svg class="feature-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/>
+                    </svg>
+                    <div class="text-sm font-medium text-gray-800">Field Analytics</div>
+                </div>
+
+                <div class="feature-card" onclick="showScreen('crop-health')">
+                    <svg class="feature-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2h-2.22l.123.666.804 4.384a1 1 0 01-1.97.36L11.22 15H8.78l-.123.666-.804 4.384a1 1 0 01-1.97-.36L5.22 15H3a2 2 0 01-2-2V5zm5.771 7H5V5h10v7H8.771z" clip-rule="evenodd"/>
+                    </svg>
+                    <div class="text-sm font-medium text-gray-800">Crop Health Diagnosis</div>
+                </div>
+
+                <div class="feature-card" onclick="showScreen('growth-tracker')">
+                    <svg class="feature-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/>
+                    </svg>
+                    <div class="text-sm font-medium text-gray-800">Growth Tracker</div>
+                </div>
+
+                <div class="feature-card" onclick="showScreen('market-trends')">
+                    <svg class="feature-icon" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 2L3 7v11a1 1 0 001 1h12a1 1 0 001-1V7l-7-5zM8 15V9h4v6H8z" clip-rule="evenodd"/>
+                    </svg>
+                    <div class="text-sm font-medium text-gray-800">Market Trends</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Field Analytics Screen -->
+        <div id="field-analytics-screen" class="screen">
+            <div class="header-bar">
+                <svg class="back-btn" fill="currentColor" viewBox="0 0 20 20" onclick="showScreen('home')">
+                    <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/>
+                </svg>
+                <h2 class="text-lg font-semibold">Field Analytics</h2>
+            </div>
+
+            <div id="sensor-readings">
+                <!-- Sensor readings will be populated here -->
+            </div>
+
+            <div class="chart-container">
+                <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-lg font-semibold text-gray-800">Sensor History</h3>
+                    <label for="metric-select" class="sr-only">Choose metric</label>
+                    <select id="metric-select" class="p-2 border rounded-lg text-sm" aria-label="Choose metric">
+                        <option value="environment.temperature">Field Temperature</option>
+                        <option value="environment.humidity">Field Humidity</option>
+                        <option value="soil.moisture">Soil Moisture</option>
+                        <option value="rain.precipitation">Rain Count</option>
+                    </select>
+                </div>
+                <div class="chart-scroll">
+                    <div class="chart-inner-wide">
+                        <canvas id="analytics-chart" width="900" height="160"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Metric Detail Screen -->
+        <div id="metric-detail-screen" class="screen">
+            <div class="header-bar">
+                <svg class="back-btn" fill="currentColor" viewBox="0 0 20 20" onclick="showScreen('field-analytics')">
+                    <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/>
+                </svg>
+                <h2 id="metric-detail-title" class="text-lg font-semibold">Metric</h2>
+            </div>
+
+            <div class="chart-container">
+                <h3 id="metric-detail-subtitle" class="text-md font-semibold text-gray-800 mb-3"></h3>
+                <div class="chart-scroll">
+                    <div class="chart-inner-wide">
+                        <canvas id="metric-detail-chart" width="900" height="180"></canvas>
+                    </div>
+                </div>
+                <p id="metric-detail-msg" class="text-sm text-gray-700 mt-4"></p>
+            </div>
+        </div>
+
+        <!-- Crop Health Diagnosis Screen -->
+        <div id="crop-health-screen" class="screen">
+            <div class="header-bar">
+                <svg class="back-btn" fill="currentColor" viewBox="0 0 20 20" onclick="showScreen('home')">
+                    <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/>
+                </svg>
+                <h2 class="text-lg font-semibold">Crop Health Diagnosis</h2>
+            </div>
+
+            <div class="sensor-card">
+                <div class="flex items-center gap-2 mb-3">
+                    <svg class="w-5 h-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                    </svg>
+                    <h3 class="text-lg font-semibold text-gray-800">Affected Area</h3>
+                </div>
+                <div class="field-map" id="affected-area-map">
+                    <!-- Affected area map will be shown here -->
+                </div>
+            </div>
+
+            <div class="sensor-card">
+                <h3 class="text-lg font-semibold text-gray-800 mb-3">Want to Know More About Your Field?</h3>
+                <div class="upload-area" onclick="document.getElementById('health-image-upload').click()">
+                    <svg class="w-8 h-8 text-gray-400 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"/>
+                    </svg>
+                    <p class="text-sm text-gray-600">Upload Pictures Of Affected Area To know Exact reason</p>
+                </div>
+                <input type="file" id="health-image-upload" accept="image/*" style="display: none;">
+            </div>
+
+            <div id="diagnosis-results" class="disease-result" style="display: none;">
+                <!-- Diagnosis results will be shown here -->
+            </div>
+        </div>
+
+        <!-- Growth Tracker Screen -->
+        <div id="growth-tracker-screen" class="screen">
+            <div class="header-bar">
+                <svg class="back-btn" fill="currentColor" viewBox="0 0 20 20" onclick="showScreen('home')">
+                    <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/>
+                </svg>
+                <h2 class="text-lg font-semibold">Growth Tracker</h2>
+            </div>
+
+            <div class="chart-container">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Month Wise Analysis</h3>
+                <canvas id="growth-chart" width="400" height="200"></canvas>
+            </div>
+
+            <div class="sensor-card">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Key Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-value">May 15th</div>
+                        <div class="stat-label">Peak Growth</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">85 Days</div>
+                        <div class="stat-label">Days Since Planting</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value">Sep 8, 2025</div>
+                        <div class="stat-label">Last Image Upload</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value text-green-600">Vegetative Growth</div>
+                        <div class="stat-label">Current Stage</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sensor-card">
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                    <p class="text-sm text-gray-700 italic">"This is a critical growth period. Ensure consistent irrigation and monitor for early signs of nutrient deficiencies."</p>
+                </div>
+                
+                <h3 class="text-lg font-semibold text-gray-800 mb-3">Want To Know More About Growth Stage</h3>
+                <div class="upload-area" onclick="document.getElementById('growth-image-upload').click()">
+                    <svg class="w-8 h-8 text-gray-400 mx-auto mb-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd"/>
+                    </svg>
+                    <p class="text-sm text-gray-600">Upload Latest Picture To get Analysis.</p>
+                </div>
+                <input type="file" id="growth-image-upload" accept="image/*" style="display: none;">
+            </div>
+
+            <div class="field-map" id="growth-field-view">
+                <!-- Field view will be shown here -->
+            </div>
+        </div>
+
+        <!-- Market Trends Screen -->
+        <div id="market-trends-screen" class="screen">
+            <div class="header-bar">
+                <svg class="back-btn" fill="currentColor" viewBox="0 0 20 20" onclick="showScreen('home')">
+                    <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/>
+                </svg>
+                <h2 class="text-lg font-semibold">Market Trends</h2>
+            </div>
+
+            <div class="sensor-card mb-4">
+                <div class="grid grid-cols-3 gap-2">
+                    <input id="mt-commodity" class="p-2 border rounded" placeholder="Commodity (optional)"/>
+                    <input id="mt-state" class="p-2 border rounded" placeholder="State e.g. Maharashtra"/>
+                    <input id="mt-market" class="p-2 border rounded" placeholder="Market (optional)"/>
+                </div>
+                <div class="mt-2 flex justify-end">
+                    <button id="mt-apply" class="px-3 py-2 bg-emerald-600 text-white rounded">Apply</button>
+                </div>
+            </div>
+            <div id="market-trends-content">
+                <!-- Market trends will be populated here -->
+            </div>
+        </div>
+
+        <!-- Profile Screen -->
+        <div id="profile-screen" class="screen">
+            <div class="header-bar">
+                <h2 class="text-lg font-semibold">Profile</h2>
+            </div>
+
+            <div class="sensor-card mb-4">
+                <div class="flex items-center gap-4 mb-4">
+                    <img src="/uploads/AgroDoot.png" alt="AgroDoot Logo" class="w-16 h-16 object-contain">
+                    <div>
+                        <h3 id="profile-name" class="text-lg font-semibold text-gray-800">User Name</h3>
+                        <p id="profile-email" class="text-sm text-gray-600">user@example.com</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sensor-card mb-4">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">Account Settings</h3>
+                <div class="space-y-3">
+                    <button class="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
+                        <div class="flex items-center justify-between">
+                            <span class="text-gray-700">Edit Profile</span>
+                            <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                        </div>
+                    </button>
+                    <button class="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
+                        <div class="flex items-center justify-between">
+                            <span class="text-gray-700">Change Password</span>
+                            <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                        </div>
+                    </button>
+                    <button class="w-full text-left p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
+                        <div class="flex items-center justify-between">
+                            <span class="text-gray-700">Notifications</span>
+                            <svg class="w-5 h-5 text-gray-400" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"/>
+                            </svg>
+                        </div>
+                    </button>
+                </div>
+            </div>
+
+            <div class="sensor-card">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">App Information</h3>
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-700">Version</span>
+                        <span class="text-gray-500">1.0.0</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="text-gray-700">Last Updated</span>
+                        <span class="text-gray-500">Today</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-6">
+                <button id="logout-btn" class="w-full bg-red-600 text-white py-3 rounded-lg font-medium">
+                    Logout
+                </button>
+            </div>
+        </div>
+
+        <!-- Bottom Navigation (Only shown when authenticated) -->
+        <div id="bottom-nav" class="bottom-nav" style="display: none;">
+            <div class="nav-item active" onclick="showScreen('home')">
+                <svg class="nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"/>
+                </svg>
+                <span>Home</span>
+            </div>
+            <div class="nav-item" onclick="showScreen('crop-health')">
+                <svg class="nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/>
+                </svg>
+                <span>Plant</span>
+            </div>
+            <div class="nav-item" onclick="showScreen('profile')">
+                <svg class="nav-icon" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
+                </svg>
+                <span>Profile</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Configuration -->
+    <script>
+        // Firebase configuration - REPLACE WITH YOUR ACTUAL CONFIG
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyAMF-H37hakWbtwGfy8-wvTWV_5RtYoUmY",
+  authDomain: "esp32---demo-ac37f.firebaseapp.com",
+  databaseURL: "https://esp32---demo-ac37f-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "esp32---demo-ac37f",
+  storageBucket: "esp32---demo-ac37f.firebasestorage.app",
+  messagingSenderId: "465358325818",
+  appId: "1:465358325818:web:11322d74bef27fc9d38d03",
+  measurementId: "G-TT46DMMWTC"
+};
+        // Check if Firebase config is properly set
+        if (firebaseConfig.apiKey === "YOUR_API_KEY_HERE" || firebaseConfig.appId === "YOUR_APP_ID_HERE") {
+            console.error("❌ Firebase configuration not set! Please update the config values.");
+            alert("Firebase configuration not set. Please check the setup guide.");
+        }
+
+        // Initialize Firebase
+        try {
+            firebase.initializeApp(firebaseConfig);
+            console.log("✅ Firebase initialized successfully");
+        } catch (error) {
+            console.error("❌ Firebase initialization failed:", error);
+            alert("Firebase initialization failed. Please check your configuration.");
+        }
+        
+        // Initialize Firebase services
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+        
+        // Add Firebase error listeners
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                console.log("✅ User authenticated:", user.email);
+            } else {
+                console.log("ℹ️ User not authenticated");
+            }
+        });
+    </script>
+    
+    <script src="/static/js/mobile.js"></script>
+</body>
+</html>
