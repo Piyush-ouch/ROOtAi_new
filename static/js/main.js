@@ -13,6 +13,14 @@ let sensorChart = null;
 let sensorHistoryChart = null;
 let fieldBoundary = null;
 let autoRefreshInterval = null;
+let gridLayer = null;
+let gridVisible = false;
+let gridCells = [];
+
+// Math helper (fix for missing Math.radians used below)
+if (!Math.radians) {
+    Math.radians = function(degrees) { return degrees * Math.PI / 180; };
+}
 
 // API Base URL
 const API_BASE = '';
@@ -112,6 +120,11 @@ async function initializeMap() {
         layers.eachLayer(function(layer) {
             fieldBoundary = layer.toGeoJSON();
             console.log('Field boundary updated:', fieldBoundary);
+            
+            // Regenerate grid when field is edited
+            if (fieldBoundary && gridVisible) {
+                showGrid();
+            }
         });
     });
 }
@@ -214,6 +227,7 @@ function initializeEventListeners() {
     // Field management buttons
     document.getElementById('drawFieldBtn').addEventListener('click', startDrawingField);
     document.getElementById('saveFieldBtn').addEventListener('click', saveField);
+    document.getElementById('toggleGridBtn').addEventListener('click', toggleGrid);
     document.getElementById('clearMapBtn').addEventListener('click', clearMap);
 }
 
@@ -472,11 +486,15 @@ async function saveField() {
         if (response.ok) {
             const result = await response.json();
             currentFieldId = result.fieldId;
+            try { localStorage.setItem('currentFieldId', currentFieldId); } catch (_) {}
             
             // Update field info
             updateFieldInfo(fieldData.fieldName, fieldBoundary);
             
-            alert(`Field saved successfully! Field ID: ${fieldId}`);
+            // Automatically show grid after saving field
+            showGrid();
+            
+            alert(`Field saved successfully! Grid with 1×1 meter blocks is now visible. Field ID: ${fieldId}`);
         } else {
             const error = await response.json();
             throw new Error(error.error || 'Failed to save field');
@@ -496,6 +514,15 @@ function clearMap() {
     fieldBoundary = null;
     currentFieldId = null;
     hardwareLocation = null;
+    try { localStorage.removeItem('currentFieldId'); } catch (_) {}
+    
+    // Remove grid layer
+    if (gridLayer) {
+        map.removeLayer(gridLayer);
+        gridLayer = null;
+        gridVisible = false;
+        updateGridButton();
+    }
     
     // Remove hardware marker
     map.eachLayer(layer => {
@@ -506,16 +533,359 @@ function clearMap() {
     
     // Reset UI
     updateFieldInfo('No field selected', null);
+    updateGridInfo(null);
     updateDeviceStatus('No device connected', '');
+}
+
+/**
+ * Toggle grid overlay
+ */
+function toggleGrid() {
+    if (!fieldBoundary) {
+        alert('Please draw a field boundary first');
+        return;
+    }
+    
+    if (gridVisible) {
+        hideGrid();
+    } else {
+        showGrid();
+    }
+}
+
+/**
+ * Show grid overlay
+ */
+function showGrid() {
+    if (!fieldBoundary) return;
+    
+    // Remove existing grid layer
+    if (gridLayer) {
+        map.removeLayer(gridLayer);
+    }
+    
+    // Generate grid
+    gridLayer = generateFieldGrid(fieldBoundary);
+    map.addLayer(gridLayer);
+    gridVisible = true;
+    
+    // Update button and info
+    updateGridButton();
+    updateGridInfo(fieldBoundary);
+}
+
+/**
+ * Hide grid overlay
+ */
+function hideGrid() {
+    if (gridLayer) {
+        map.removeLayer(gridLayer);
+        gridLayer = null;
+        gridVisible = false;
+        updateGridButton();
+        updateGridInfo(null);
+    }
+}
+
+/**
+ * Update grid toggle button text
+ */
+function updateGridButton() {
+    const btn = document.getElementById('toggleGridBtn');
+    if (gridVisible) {
+        btn.textContent = 'Hide Grid (1m²)';
+        btn.className = 'bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg text-sm transition-colors';
+    } else {
+        btn.textContent = 'Show Grid (1m²)';
+        btn.className = 'bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm transition-colors';
+    }
+}
+
+/**
+ * Generate grid overlay for field boundary
+ */
+function generateFieldGrid(geojson) {
+    if (!geojson || !geojson.coordinates || !geojson.coordinates[0]) return null;
+    
+    const coords = geojson.coordinates[0];
+    const bounds = getBoundsFromCoordinates(coords);
+    
+    // Calculate grid size in meters (1 meter per grid cell)
+    const gridSizeMeters = 1;
+    
+    // Convert meters to degrees (approximate)
+    const latDegreePerMeter = 1 / 111320; // 1 degree latitude ≈ 111,320 meters
+    const lngDegreePerMeter = 1 / (111320 * Math.cos(Math.radians(bounds.center.lat)));
+    
+    const gridSizeLat = gridSizeMeters * latDegreePerMeter;
+    const gridSizeLng = gridSizeMeters * lngDegreePerMeter;
+    
+    // Create grid layer
+    const gridGroup = L.layerGroup();
+    gridCells = [];
+    
+    // Calculate number of grid cells
+    const latCells = Math.ceil((bounds.max.lat - bounds.min.lat) / gridSizeLat);
+    const lngCells = Math.ceil((bounds.max.lng - bounds.min.lng) / gridSizeLng);
+    
+    // Generate grid cells
+    for (let i = 0; i < latCells; i++) {
+        for (let j = 0; j < lngCells; j++) {
+            const cellLat1 = bounds.min.lat + (i * gridSizeLat);
+            const cellLng1 = bounds.min.lng + (j * gridSizeLng);
+            const cellLat2 = bounds.min.lat + ((i + 1) * gridSizeLat);
+            const cellLng2 = bounds.min.lng + ((j + 1) * gridSizeLng);
+            
+            // Create cell polygon (Leaflet expects [lat, lng])
+            const cellCoordsLeaflet = [
+                [cellLat1, cellLng1],
+                [cellLat2, cellLng1],
+                [cellLat2, cellLng2],
+                [cellLat1, cellLng2],
+                [cellLat1, cellLng1]
+            ];
+            
+            const cellPolygon = L.polygon(cellCoordsLeaflet, {
+                color: '#94a3b8', // slate-400 outline
+                weight: 0.6,
+                opacity: 0.7,
+                fillColor: '#000000',
+                fillOpacity: 0.0, // default: no fill for cleanliness
+                className: 'grid-cell'
+            });
+            
+            // Check if cell is within field boundary
+            // Build GeoJSON coords as [lng, lat]
+            const cellCoordsLngLat = [
+                [cellLng1, cellLat1],
+                [cellLng1, cellLat2],
+                [cellLng2, cellLat2],
+                [cellLng2, cellLat1],
+                [cellLng1, cellLat1]
+            ];
+            const cellGeoJSON = {
+                type: 'Polygon',
+                coordinates: [cellCoordsLngLat]
+            };
+            
+            if (isPolygonWithinField(cellGeoJSON, geojson)) {
+                // Add cell number as popup and register for dynamic styling
+                const cellNumber = i * lngCells + j + 1;
+                cellPolygon.bindPopup(
+                    `<div class="text-center">
+                        <h3 class="font-semibold text-indigo-600">Grid Cell ${cellNumber}</h3>
+                        <p class="text-sm text-gray-600">Size: 1m × 1m</p>
+                        <p class="text-xs text-gray-500">Area: 1 m²</p>
+                    </div>`
+                );
+                cellPolygon.on('click', () => highlightSelectedCell(cellPolygon));
+                gridCells.push({ number: cellNumber, layer: cellPolygon });
+                gridGroup.addLayer(cellPolygon);
+            }
+        }
+    }
+    
+    return gridGroup;
+}
+
+// Lightweight selection highlight (local visual feedback)
+function highlightSelectedCell(layer) {
+    try {
+        gridCells.forEach(c => c.layer.setStyle({ weight: 0.6 }));
+        layer.setStyle({ weight: 2 });
+    } catch (_) {}
+}
+
+// Public hook: update grid cell styles from external sensor status
+// mapping: { [cellNumber]: { status: 'ok'|'warn'|'critical', value?: number } }
+function updateGridStylesFromMapping(mapping) {
+    if (!mapping || !Array.isArray(gridCells)) return;
+    gridCells.forEach(({ number, layer }) => {
+        const m = mapping[number];
+        if (!m) {
+            // default subtle outline
+            layer.setStyle({ fillOpacity: 0.0, color: '#94a3b8' });
+            return;
+        }
+        // style by status
+        if (m.status === 'critical') {
+            layer.setStyle({ fillColor: '#ef4444', fillOpacity: 0.35, color: '#b91c1c', weight: 1.2 });
+        } else if (m.status === 'warn') {
+            layer.setStyle({ fillColor: '#f59e0b', fillOpacity: 0.25, color: '#b45309', weight: 1.0 });
+        } else {
+            layer.setStyle({ fillColor: '#22c55e', fillOpacity: 0.15, color: '#15803d', weight: 0.8 });
+        }
+    });
+}
+
+// Placeholder: call this with RTDB per-cell arrays when available
+function ingestGridDataFromRTDB(snapshot) {
+    // Expected shape example:
+    // { cells: { '1': { moisture: 28 }, '2': { moisture: 55 }, ... } }
+    try {
+        if (!snapshot || !snapshot.cells) return;
+        const mapping = {};
+        Object.keys(snapshot.cells).forEach(key => {
+            const cell = snapshot.cells[key] || {};
+            const moisture = Number(cell.moisture);
+            let status = 'ok';
+            if (!isNaN(moisture)) {
+                if (moisture < 30) status = 'critical';
+                else if (moisture < 40) status = 'warn';
+            }
+            mapping[Number(key)] = { status, value: moisture };
+        });
+        updateGridStylesFromMapping(mapping);
+    } catch (e) {
+        console.error('Error ingesting grid RTDB data:', e);
+    }
+}
+
+/**
+ * Get bounds from coordinates array
+ */
+function getBoundsFromCoordinates(coords) {
+    // coords are GeoJSON [lng, lat]
+    let minLat = coords[0][1];
+    let maxLat = coords[0][1];
+    let minLng = coords[0][0];
+    let maxLng = coords[0][0];
+    
+    coords.forEach(coord => {
+        const [lng, lat] = coord;
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+        minLng = Math.min(minLng, lng);
+        maxLng = Math.max(maxLng, lng);
+    });
+    
+    return {
+        min: { lat: minLat, lng: minLng },
+        max: { lat: maxLat, lng: maxLng },
+        center: { lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2 }
+    };
+}
+
+/**
+ * Check if a polygon is within the field boundary (simplified point-in-polygon)
+ */
+function isPolygonWithinField(cellGeoJSON, fieldGeoJSON) {
+    // Simple check: if any corner of the cell is within the field
+    const cellCoords = cellGeoJSON.coordinates[0]; // [lng, lat]
+    const fieldCoords = fieldGeoJSON.coordinates[0]; // [lng, lat]
+    
+    for (let coord of cellCoords) {
+        if (isPointInPolygon(coord, fieldCoords)) {
+            return true;
+        }
+    }
+    
+    // Also check if field center is in cell
+    const fieldCenter = getPolygonCenter(fieldGeoJSON);
+    const cellCenter = getPolygonCenter(cellGeoJSON);
+    
+    return isPointInPolygon(fieldCenter, cellCoords);
+}
+
+/**
+ * Check if point is inside polygon using ray casting algorithm
+ */
+function isPointInPolygon(point, polygon) {
+    const [x, y] = point; // x=lng, y=lat
+    let inside = false;
+    
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const [xi, yi] = polygon[i];
+        const [xj, yj] = polygon[j];
+        
+        if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) {
+            inside = !inside;
+        }
+    }
+    
+    return inside;
+}
+
+/**
+ * Get center point of polygon
+ */
+function getPolygonCenter(geojson) {
+    const coords = geojson.coordinates[0];
+    let sumLat = 0;
+    let sumLng = 0;
+    
+    coords.forEach(coord => {
+        sumLat += coord[0];
+        sumLng += coord[1];
+    });
+    
+    return [sumLat / coords.length, sumLng / coords.length];
+}
+
+/**
+ * Update grid information display
+ */
+function updateGridInfo(fieldBoundary) {
+    const container = document.getElementById('gridInfo');
+    
+    if (fieldBoundary && gridVisible) {
+        const bounds = getBoundsFromCoordinates(fieldBoundary.coordinates[0]);
+        const area = calculatePolygonArea(fieldBoundary);
+        const totalCells = Math.floor(area); // 1 cell per square meter
+        
+        container.innerHTML = `
+            <p><strong>Grid Size:</strong> 1m × 1m</p>
+            <p><strong>Total Cells:</strong> ${totalCells}</p>
+            <p><strong>Grid Status:</strong> Active</p>
+        `;
+    } else {
+        container.innerHTML = '<p>No grid available</p>';
+    }
 }
 
 /**
  * Load field data from backend
  */
 async function loadFieldData() {
-    // In a real app, you would load existing fields for the current user
-    // For this prototype, we'll just initialize empty state
     console.log('Loading field data...');
+    try {
+        const savedId = localStorage.getItem('currentFieldId');
+        if (!savedId) return;
+        const resp = await fetch(`/api/field/${savedId}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!data.boundary) return;
+        let boundary;
+        try {
+            boundary = typeof data.boundary === 'string' ? JSON.parse(data.boundary) : data.boundary;
+        } catch (_) { return; }
+        if (!boundary || !boundary.coordinates) return;
+        currentFieldId = savedId;
+        fieldBoundary = boundary;
+
+        // Draw the saved field on map
+        renderFieldPolygon(boundary);
+        // Show grid automatically
+        showGrid();
+        updateFieldInfo(data.fieldName || 'Saved Field', boundary);
+    } catch (e) {
+        console.error('Error loading saved field:', e);
+    }
+}
+
+function renderFieldPolygon(boundary) {
+    try {
+        // Convert GeoJSON [lng,lat] to Leaflet [lat,lng]
+        const latlngs = (boundary.coordinates[0] || []).map(([lng, lat]) => [lat, lng]);
+        const polygon = L.polygon(latlngs, {
+            color: '#10b981',
+            fillColor: '#10b981',
+            fillOpacity: 0.2
+        });
+        drawnItems.clearLayers();
+        drawnItems.addLayer(polygon);
+        map.fitBounds(polygon.getBounds());
+    } catch (_) {}
 }
 
 /**

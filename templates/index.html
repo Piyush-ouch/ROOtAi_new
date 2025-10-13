@@ -47,6 +47,16 @@
             color: '#059669';
             weight: 2;
         }
+        
+        .grid-cell {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .grid-cell:hover {
+            fillOpacity: 0.3 !important;
+            stroke-width: 2px !important;
+        }
     </style>
 </head>
 <body class="bg-gray-50 min-h-screen">
@@ -146,7 +156,10 @@
                             Draw Field Boundary
                         </button>
                         <button id="saveFieldBtn" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition-colors">
-                            Save Field
+                            Save Field & Show Grid
+                        </button>
+                        <button id="toggleGridBtn" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm transition-colors">
+                            Toggle Grid (1m²)
                         </button>
                         <button id="clearMapBtn" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg text-sm transition-colors">
                             Clear Map
@@ -221,11 +234,17 @@
                 <p class="text-sm text-gray-500">Manage your fields and view detailed information</p>
             </div>
             <div class="p-6">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div class="border border-gray-200 rounded-lg p-4">
                         <h3 class="font-medium text-gray-900">Field Information</h3>
                         <div id="fieldInfo" class="mt-2 text-sm text-gray-600">
                             <p>No field selected</p>
+                        </div>
+                    </div>
+                    <div class="border border-gray-200 rounded-lg p-4">
+                        <h3 class="font-medium text-gray-900">Grid Information</h3>
+                        <div id="gridInfo" class="mt-2 text-sm text-gray-600">
+                            <p>No grid available</p>
                         </div>
                     </div>
                     <div class="border border-gray-200 rounded-lg p-4">

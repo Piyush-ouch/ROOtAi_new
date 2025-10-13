@@ -5,6 +5,7 @@
 let currentScreen = 'splash';
 let sensorData = null; // This will be updated in real-time
 let map = null;
+let griddedMap = null; // For the twin gridded map view
 let drawControl = null;
 let drawnLayer = null;
 let currentFieldId = null;
@@ -15,6 +16,10 @@ let growthChart = null;
 let isAuthenticated = false;
 let currentUser = null;
 let authToken = null;
+let gridLayer = null;
+let gridVisible = false;
+let baseLayers = {};
+let activeBaseLayer = null;
 
 // Initialize the mobile app
 document.addEventListener('DOMContentLoaded', function() {
@@ -111,30 +116,33 @@ function initializeMap() {
     }
     
     // Add tile layer
-    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 20
-    }).addTo(map);
+    baseLayers = {
+        'Street (OSM)': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 20
+        }),
+        'Satellite (Esri)': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles © Esri',
+            maxZoom: 20
+        }),
+        'Satellite (Google)': L.tileLayer('https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+            subdomains: ['0','1','2','3'],
+            maxZoom: 20,
+            attribution: 'Imagery © Google'
+        })
+    };
 
-    // Reliable satellite layer (Esri)
-    const esriSatellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics',
-        maxZoom: 20
-    });
-
-    // Optional Google satellite (may be restricted by ToS/rate limits)
-    const googleSatellite = L.tileLayer('https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-        subdomains: ['0','1','2','3'],
-        maxZoom: 20,
-        attribution: 'Imagery © Google'
-    });
+    // Set the default active layer
+    activeBaseLayer = baseLayers['Street (OSM)'];
+    map.addLayer(activeBaseLayer);
 
     // Layer control
-    L.control.layers({
-        'Street (OSM)': osm,
-        'Satellite (Esri)': esriSatellite,
-        'Satellite (Google)': googleSatellite
-    }, {}, { position: 'topright', collapsed: true }).addTo(map)
+    L.control.layers(baseLayers, {}, { position: 'topright', collapsed: true }).addTo(map);
+
+    // Keep track of which base layer is active
+    map.on('baselayerchange', function (e) {
+        activeBaseLayer = e.layer;
+    });
     
     // Add draw controls (polygon only)
     drawControl = new L.Control.Draw({
@@ -157,10 +165,12 @@ function initializeMap() {
     // Listen for created polygon
     map.on(L.Draw.Event.CREATED, function (e) {
         if (drawnLayer) {
-            map.removeLayer(drawnLayer);
+            map.removeLayer(drawnLayer); // Remove any previously drawn layer
         }
         drawnLayer = e.layer;
         drawnLayer.addTo(map);
+
+        // Enable the save button.
         document.getElementById('save-field-btn').disabled = false;
     });
 
@@ -174,6 +184,91 @@ function initializeMap() {
     }
     
     console.log('✅ Map initialized successfully');
+}
+
+/**
+ * Hides the main map and shows a new, zoomed-in satellite map with the field and grid.
+ * @param {L.Layer} fieldLayer The saved polygon layer.
+ */
+function displayGriddedField(fieldLayer) {
+    const mainMapSection = document.getElementById('main-map-section');
+    const griddedMapContainer = document.getElementById('gridded-field-map-container');
+
+    // Hide main map section and show the new gridded map section
+    mainMapSection.style.display = 'none';
+    griddedMapContainer.style.display = 'block';
+
+    // If a gridded map instance already exists, remove it to prevent errors
+    if (griddedMap) {
+        griddedMap.remove();
+        griddedMap = null;
+    }
+
+    // Use a small delay to ensure the container is visible before initializing the map.
+    setTimeout(() => {
+        // Initialize the new "twin" map in its now-visible container
+        griddedMap = L.map('gridded-field-map', {
+            zoomControl: false, 
+            attributionControl: false
+        });
+
+        // Add the satellite base layer to this new map
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles © Esri',
+            maxZoom: 23
+        }).addTo(griddedMap);
+
+        // Add the drawn field polygon to the new map
+        const fieldClone = L.geoJSON(fieldLayer.toGeoJSON(), {
+            style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }
+        }).addTo(griddedMap);
+        
+        // Generate the grid
+        const gridLayerGroup = generateFieldGrid(fieldLayer.toGeoJSON().geometry);
+        let gridCount = 0;
+        
+        if (gridLayerGroup) {
+            gridLayerGroup.addTo(griddedMap);
+            // Count the number of layers (squares) in the grid group
+            gridCount = gridLayerGroup.getLayers().length;
+        }
+
+        // Update the display with the count of grid squares
+        document.getElementById('grid-count-display').textContent = `Total Grid Squares: ${gridCount}`;
+
+        // Tell the map to update its size now that it's visible
+        griddedMap.invalidateSize();
+
+        // Fit the new map perfectly to the field's bounds *after* it knows its size
+        griddedMap.fitBounds(fieldClone.getBounds(), { 
+            padding: [10, 10] ,
+            maxZoom: 50});
+
+    }, 10); // 10ms delay
+}
+
+
+/**
+ * Hides the gridded field view and returns to the main map.
+ */
+function returnToMainMap() {
+    const mainMapSection = document.getElementById('main-map-section');
+    const griddedMapContainer = document.getElementById('gridded-field-map-container');
+
+    // Hide the gridded map section and show the main one
+    griddedMapContainer.style.display = 'none';
+    mainMapSection.style.display = 'block';
+
+    // Clean up the twin map instance to free up resources
+    if (griddedMap) {
+        griddedMap.remove();
+        griddedMap = null;
+    }
+
+    // Refresh the main map's size in case the container change affected it
+    if (map) {
+        map.invalidateSize();
+    }
 }
 
 /**
@@ -1026,6 +1121,11 @@ function setupEventListeners() {
             }, 500);
         });
     }
+
+    const returnBtn = document.getElementById('return-to-main-map-btn');
+    if (returnBtn) {
+        returnBtn.addEventListener('click', returnToMainMap);
+    }
 }
 
 /**
@@ -1289,10 +1389,14 @@ async function saveDrawnField() {
             const data = await res.json();
             currentFieldId = data.fieldId;
             console.log('Field saved successfully:', data);
-            alert('Field saved successfully');
+            
+            // MODIFIED: Instead of showing grid on main map, switch to the gridded satellite view
+            displayGriddedField(drawnLayer);
+            
+            alert('Field saved successfully! Displaying gridded satellite view.');
             document.getElementById('save-field-btn').disabled = true;
             
-            // Reload field list
+            // Reload field list in the background
             await loadFieldList();
         } else {
             const err = await res.json();
@@ -1613,4 +1717,134 @@ async function openMetricDetail(metricPath, title) {
     } catch (e) {
         console.error('Metric detail error', e);
     }
+}
+
+/**
+ * Show grid overlay for field boundary
+ */
+function showGrid(geojson) {
+    if (!geojson) return;
+    
+    // Remove existing grid layer
+    if (gridLayer) {
+        map.removeLayer(gridLayer);
+    }
+    
+    // Generate grid
+    gridLayer = generateFieldGrid(geojson);
+    map.addLayer(gridLayer);
+    gridVisible = true;
+    
+    console.log('Grid displayed with 1x1 meter blocks');
+}
+
+/**
+ * Generate grid overlay for field boundary
+ */
+function generateFieldGrid(geojson) {
+    if (!geojson || !geojson.coordinates || !geojson.coordinates[0]) return null;
+    
+    const coords = geojson.coordinates[0];
+    const bounds = getBoundsFromCoordinates(coords);
+    
+    // Calculate grid size in meters (5 meter per grid cell)
+    const gridSizeMeters = 5;
+    
+    // Convert meters to degrees (approximate)
+    const latDegreePerMeter = 1 / 111320; // 1 degree latitude ≈ 111,320 meters
+    const lngDegreePerMeter = 1 / (111320 * Math.cos(Math.PI / 180 * bounds.center.lat));
+    
+    const gridSizeLat = gridSizeMeters * latDegreePerMeter;
+    const gridSizeLng = gridSizeMeters * lngDegreePerMeter;
+    
+    // Create grid layer
+    const gridGroup = L.layerGroup();
+    
+    // Calculate number of grid cells
+    const latCells = Math.ceil((bounds.max.lat - bounds.min.lat) / gridSizeLat);
+    const lngCells = Math.ceil((bounds.max.lng - bounds.min.lng) / gridSizeLng);
+    
+    // Generate grid cells
+    for (let i = 0; i < latCells; i++) {
+        for (let j = 0; j < lngCells; j++) {
+            const cellLat1 = bounds.min.lat + (i * gridSizeLat);
+            const cellLng1 = bounds.min.lng + (j * gridSizeLng);
+            const cellLat2 = bounds.min.lat + ((i + 1) * gridSizeLat);
+            const cellLng2 = bounds.min.lng + ((j + 1) * gridSizeLng);
+            
+            // Get the center of the cell to check if it's inside the main polygon
+            const cellCenter = L.polygon([[cellLat1, cellLng1], [cellLat2, cellLng1], [cellLat2, cellLng2], [cellLat1, cellLng2]]).getBounds().getCenter();
+            
+            if (isPointInPolygon([cellCenter.lat, cellCenter.lng], coords.map(c => [c[1], c[0]]))) {
+                 const cellPolygon = L.polygon([[cellLat1, cellLng1], [cellLat2, cellLng1], [cellLat2, cellLng2], [cellLat1, cellLng2]], {
+                    color: '#6366f1',
+                    weight: 1,
+                    opacity: 0.8,
+                    fillColor: '#6366f1',
+                    fillOpacity: 0.1,
+                    className: 'grid-cell'
+                });
+                
+                const cellNumber = i * lngCells + j + 1;
+                cellPolygon.bindPopup(`
+                    <div class="text-center">
+                        <h3 class="font-semibold text-indigo-600">Grid Cell ${cellNumber}</h3>
+                        <p class="text-sm text-gray-600">Size: 1m × 1m</p>
+                    </div>
+                `);
+                
+                gridGroup.addLayer(cellPolygon);
+            }
+        }
+    }
+    
+    return gridGroup;
+}
+
+/**
+ * Get bounds from coordinates array
+ */
+function getBoundsFromCoordinates(coords) {
+    let minLat = coords[0][1]; // Note: coords are [lng, lat] format
+    let maxLat = coords[0][1];
+    let minLng = coords[0][0];
+    let maxLng = coords[0][0];
+    
+    coords.forEach(coord => {
+        const [lng, lat] = coord;
+        minLat = Math.min(minLat, lat);
+        maxLat = Math.max(maxLat, lat);
+        minLng = Math.min(minLng, lng);
+        maxLng = Math.max(maxLng, lng);
+    });
+    
+    return {
+        min: { lat: minLat, lng: minLng },
+        max: { lat: maxLat, lng: maxLng },
+        center: { lat: (minLat + maxLat) / 2, lng: (minLng + maxLng) / 2 }
+    };
+}
+
+/**
+ * Check if point is inside polygon using ray casting algorithm.
+ */
+function isPointInPolygon(point, polygon) {
+    const x = point[1]; // lng
+    const y = point[0]; // lat
+    let inside = false;
+    
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+        const xi = polygon[i][1]; // lng
+        const yi = polygon[i][0]; // lat
+        const xj = polygon[j][1]; // lng
+        const yj = polygon[j][0]; // lat
+        
+        const intersect = ((yi > y) !== (yj > y))
+            && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersect) {
+            inside = !inside;
+        }
+    }
+    
+    return inside;
 }

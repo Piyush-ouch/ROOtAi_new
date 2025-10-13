@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,7 +10,6 @@
     <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Firebase SDK -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
@@ -154,13 +152,6 @@
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         
-        .feature-icon {
-            width: 32px;
-            height: 32px;
-            margin: 0 auto 8px;
-            color: #10b981;
-        }
-        
         .connect-btn {
             background: #10b981;
             color: white;
@@ -217,6 +208,11 @@
             height: 100%;
             width: 100%;
             border-radius: 12px;
+        }
+
+        .map-focus-mode {
+            background-color: #f0fdf4; /* A very light green, like a blueprint */
+            border: 2px solid #10b981;
         }
         
         .chart-container {
@@ -348,7 +344,6 @@
 </head>
 <body class="bg-gray-50">
     <div class="mobile-container">
-        <!-- Status Bar -->
         <div class="status-bar">
             <span>9:41</span>
             <div class="flex items-center gap-1">
@@ -362,11 +357,9 @@
             </div>
         </div>
 
-        <!-- Splash Screen -->
         <div id="splash-screen" class="screen active">
             <div class="flex flex-col items-center justify-center h-full text-center px-8">
                 <div class="mb-8">
-                    <!-- AgroDoot Logo -->
                     <div class="flex items-center justify-center mb-4">
                         <img src="/uploads/AgroDoot.png" alt="AgroDoot Logo" class="w-16 h-16 object-contain mr-3">
                         <div class="text-3xl font-bold text-green-600">AgroDoot</div>
@@ -376,17 +369,12 @@
             </div>
         </div>
 
-        <!-- Login Screen -->
         <div id="login-screen" class="screen">
             <div class="px-6 py-8">
-                <!-- Logo -->
                 <div class="flex items-center justify-center mb-8">
                     <img src="static/uploads/AgroDoot.png" alt="AgroDoot Logo" class="web_logo"><br>
-                    <!-- <h5 class="logo-text" style="color: #10b981; ">The truth is in the roots.</h5> -->
-                    <!-- <div class="text-2xl font-bold text-green-600">AgroDoot</div> -->
-                </div>
+                    </div>
 
-                <!-- Navigation Tabs -->
                 <div class="flex border-b border-gray-200 mb-6">
                     <button id="login-tab" class="flex-1 py-3 text-center text-green-600 font-medium border-b-2 border-green-600">
                         Log in
@@ -396,7 +384,6 @@
                     </button>
                 </div>
 
-                <!-- Login Form -->
                 <div id="login-form">
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Your Email</label>
@@ -423,7 +410,6 @@
                     </button>
                 </div>
 
-                <!-- Signup Form (Hidden by default) -->
                 <div id="signup-form" class="hidden">
                     <div class="mb-4">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Your Name</label>
@@ -450,14 +436,12 @@
                     </button>
                 </div>
 
-                <!-- Divider -->
                 <div class="flex items-center my-6">
                     <div class="flex-1 border-t border-gray-300"></div>
                     <span class="px-4 text-sm text-gray-500">Or</span>
                     <div class="flex-1 border-t border-gray-300"></div>
                 </div>
 
-                <!-- Footer -->
                 <div class="text-center">
                     <span class="text-sm text-gray-600">Don't have an account? </span>
                     <a href="#" id="signup-link" class="text-sm text-blue-600">Sign up</a>
@@ -465,17 +449,14 @@
             </div>
         </div>
 
-        <!-- Forgot Password Screen -->
         <div id="forgot-password-screen" class="screen">
             <div class="px-6 py-8">
-                <!-- Back Button -->
                 <button id="forgot-back-btn" class="mb-6">
                     <svg class="w-6 h-6 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
                         <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/>
                     </svg>
                 </button>
 
-                <!-- Logo -->
                 <div class="flex items-center justify-center mb-6">
                     <img src="/uploads/AgroDoot.png" alt="AgroDoot Logo" class="w-10 h-10 object-contain mr-2">
                     <div class="text-xl font-bold text-green-600">AgroDoot</div>
@@ -495,17 +476,14 @@
             </div>
         </div>
 
-        <!-- Set New Password Screen -->
         <div id="set-password-screen" class="screen">
             <div class="px-6 py-8">
-                <!-- Back Button -->
                 <button id="set-password-back-btn" class="mb-6">
                     <svg class="w-6 h-6 text-gray-600" fill="currentColor" viewBox="0 0 20 20">
                         <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/>
                     </svg>
                 </button>
 
-                <!-- Logo -->
                 <div class="flex items-center justify-center mb-6">
                     <img src="/uploads/AgroDoot.png" alt="AgroDoot Logo" class="w-10 h-10 object-contain mr-2">
                     <div class="text-xl font-bold text-green-600">AgroDoot</div>
@@ -546,7 +524,6 @@
             </div>
         </div>
 
-        <!-- Success Screen -->
         <div id="success-screen" class="screen">
             <div class="flex flex-col items-center justify-center h-full text-center px-8">
                 <div class="mb-6">
@@ -565,7 +542,6 @@
             </div>
         </div>
 
-        <!-- Home Screen -->
         <div id="home-screen" class="screen">
             <div class="text-center mb-6">
                 <h1 class="text-2xl font-bold text-gray-800 mb-2">Weather</h1>
@@ -573,10 +549,8 @@
                 <div class="text-gray-600">Pune, Maharashtra</div>
             </div>
 
-            <!-- Alerts Container -->
             <div id="alerts-container" class="mb-4">
-                <!-- Alerts will be populated here -->
-            </div>
+                </div>
 
             <button id="connect-doot-btn" class="connect-btn">
                 Connect with DOOT
@@ -586,61 +560,72 @@
                 Currently Disconnected
             </div>
 
-            <div class="field-map" id="field-map">
-                <div id="map-loading" class="flex items-center justify-center h-full text-gray-500">
-                    <div class="text-center">
-                        <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-2"></div>
-                        <div>Loading map...</div>
+            <div id="main-map-section">
+                <div class="field-map" id="field-map">
+                    <div id="map-loading" class="flex items-center justify-center h-full text-gray-500">
+                        <div class="text-center">
+                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500 mx-auto mb-2"></div>
+                            <div>Loading map...</div>
+                        </div>
+                    </div>
+                    <div id="map-error" class="flex items-center justify-center h-full text-red-500" style="display: none;">
+                        <div class="text-center">
+                            <div class="text-4xl mb-2">🗺️</div>
+                            <div class="mb-2">Map failed to load</div>
+                            <button id="retry-map-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm">
+                                Retry
+                            </button>
+                        </div>
                     </div>
                 </div>
-                <div id="map-error" class="flex items-center justify-center h-full text-red-500" style="display: none;">
-                    <div class="text-center">
-                        <div class="text-4xl mb-2">🗺️</div>
-                        <div class="mb-2">Map failed to load</div>
-                        <button id="retry-map-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg text-sm">
-                            Retry
-                        </button>
-                    </div>
+                <div class="grid grid-cols-3 gap-2 mb-4">
+                    <button id="locate-btn" class="w-full py-2 rounded-lg border border-gray-300 bg-white text-gray-800">Use My Location</button>
+                    <button id="draw-field-btn" class="w-full py-2 rounded-lg border border-gray-300 bg-white text-gray-800">Draw Field</button>
+                    <button id="save-field-btn" class="w-full py-2 rounded-lg bg-emerald-600 text-white disabled:bg-gray-300" disabled>Save Field</button>
                 </div>
             </div>
-            <div class="grid grid-cols-3 gap-2 mb-4">
-                <button id="locate-btn" class="w-full py-2 rounded-lg border border-gray-300 bg-white text-gray-800">Use My Location</button>
-                <button id="draw-field-btn" class="w-full py-2 rounded-lg border border-gray-300 bg-white text-gray-800">Draw Field</button>
-                <button id="save-field-btn" class="w-full py-2 rounded-lg bg-emerald-600 text-white disabled:bg-gray-300" disabled>Save Field</button>
+
+            <div id="gridded-field-map-container" style="display: none;">
+                <h3 class="text-lg font-bold text-gray-800 mb-2">Gridded Field Satellite View</h3>
+                <h3 id="grid-count-display" class="text-md font-semibold text-gray-600 mb-2">Total Grid Squares: 0</h3>
+                <div id="gridded-field-map" class="field-map" style="height: 400px;"></div>
+                <div class="mt-4">
+                    <button id="return-to-main-map-btn" class="w-full py-2 rounded-lg bg-gray-600 text-white">Return to Main Map</button>
+                </div>
             </div>
 
             <div class="feature-grid">
                 <div class="feature-card" onclick="showScreen('field-analytics')">
-                    <svg class="feature-icon" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/>
+                    <svg class="w-10 h-10 mx-auto mb-2 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6a7.5 7.5 0 1 0 7.5 7.5h-7.5V6Z" />
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5H21A7.5 7.5 0 0 0 13.5 3v7.5Z" />
                     </svg>
                     <div class="text-sm font-medium text-gray-800">Field Analytics</div>
                 </div>
 
                 <div class="feature-card" onclick="showScreen('crop-health')">
-                    <svg class="feature-icon" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M3 5a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2h-2.22l.123.666.804 4.384a1 1 0 01-1.97.36L11.22 15H8.78l-.123.666-.804 4.384a1 1 0 01-1.97-.36L5.22 15H3a2 2 0 01-2-2V5zm5.771 7H5V5h10v7H8.771z" clip-rule="evenodd"/>
+                    <svg class="w-10 h-10 mx-auto mb-2 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
                     </svg>
                     <div class="text-sm font-medium text-gray-800">Crop Health Diagnosis</div>
                 </div>
 
                 <div class="feature-card" onclick="showScreen('growth-tracker')">
-                    <svg class="feature-icon" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/>
+                    <svg class="w-10 h-10 mx-auto mb-2 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="m2.25 12 8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h7.5" />
                     </svg>
                     <div class="text-sm font-medium text-gray-800">Growth Tracker</div>
                 </div>
 
                 <div class="feature-card" onclick="showScreen('market-trends')">
-                    <svg class="feature-icon" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M10 2L3 7v11a1 1 0 001 1h12a1 1 0 001-1V7l-7-5zM8 15V9h4v6H8z" clip-rule="evenodd"/>
+                    <svg class="w-10 h-10 mx-auto mb-2 text-green-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349M3.75 21V9.349m0 0a3.001 3.001 0 0 0 3.75 0M3.75 9.349h3.75m0 0a3.001 3.001 0 0 1 3.75 0m0 0h3.75m0 0a3.001 3.001 0 0 0 3.75 0m0 0H21m-3.75 0a3.001 3.001 0 0 1-3.75 0m0 0c-1.22.563-2.67.563-3.89 0" />
                     </svg>
                     <div class="text-sm font-medium text-gray-800">Market Trends</div>
                 </div>
             </div>
         </div>
 
-        <!-- Field Analytics Screen -->
         <div id="field-analytics-screen" class="screen">
             <div class="header-bar">
                 <svg class="back-btn" fill="currentColor" viewBox="0 0 20 20" onclick="showScreen('home')">
@@ -650,8 +635,7 @@
             </div>
 
             <div id="sensor-readings">
-                <!-- Sensor readings will be populated here -->
-            </div>
+                </div>
 
             <div class="chart-container">
                 <div class="flex items-center justify-between mb-3">
@@ -672,7 +656,6 @@
             </div>
         </div>
 
-        <!-- Metric Detail Screen -->
         <div id="metric-detail-screen" class="screen">
             <div class="header-bar">
                 <svg class="back-btn" fill="currentColor" viewBox="0 0 20 20" onclick="showScreen('field-analytics')">
@@ -692,7 +675,6 @@
             </div>
         </div>
 
-        <!-- Crop Health Diagnosis Screen -->
         <div id="crop-health-screen" class="screen">
             <div class="header-bar">
                 <svg class="back-btn" fill="currentColor" viewBox="0 0 20 20" onclick="showScreen('home')">
@@ -709,8 +691,7 @@
                     <h3 class="text-lg font-semibold text-gray-800">Affected Area</h3>
                 </div>
                 <div class="field-map" id="affected-area-map">
-                    <!-- Affected area map will be shown here -->
-                </div>
+                    </div>
             </div>
 
             <div class="sensor-card">
@@ -725,11 +706,9 @@
             </div>
 
             <div id="diagnosis-results" class="disease-result" style="display: none;">
-                <!-- Diagnosis results will be shown here -->
-            </div>
+                </div>
         </div>
 
-        <!-- Growth Tracker Screen -->
         <div id="growth-tracker-screen" class="screen">
             <div class="header-bar">
                 <svg class="back-btn" fill="currentColor" viewBox="0 0 20 20" onclick="showScreen('home')">
@@ -781,11 +760,9 @@
             </div>
 
             <div class="field-map" id="growth-field-view">
-                <!-- Field view will be shown here -->
-            </div>
+                </div>
         </div>
 
-        <!-- Market Trends Screen -->
         <div id="market-trends-screen" class="screen">
             <div class="header-bar">
                 <svg class="back-btn" fill="currentColor" viewBox="0 0 20 20" onclick="showScreen('home')">
@@ -805,11 +782,9 @@
                 </div>
             </div>
             <div id="market-trends-content">
-                <!-- Market trends will be populated here -->
-            </div>
+                </div>
         </div>
 
-        <!-- Profile Screen -->
         <div id="profile-screen" class="screen">
             <div class="header-bar">
                 <h2 class="text-lg font-semibold">Profile</h2>
@@ -876,7 +851,6 @@
             </div>
         </div>
 
-        <!-- Bottom Navigation (Only shown when authenticated) -->
         <div id="bottom-nav" class="bottom-nav" style="display: none;">
             <div class="nav-item active" onclick="showScreen('home')">
                 <svg class="nav-icon" fill="currentColor" viewBox="0 0 20 20">
@@ -899,7 +873,6 @@
         </div>
     </div>
 
-    <!-- Firebase Configuration -->
     <script>
         // Firebase configuration - REPLACE WITH YOUR ACTUAL CONFIG
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
@@ -908,7 +881,7 @@ const firebaseConfig = {
   authDomain: "esp32---demo-ac37f.firebaseapp.com",
   databaseURL: "https://esp32---demo-ac37f-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "esp32---demo-ac37f",
-  storageBucket: "esp32---demo-ac37f.firebasestorage.app",
+  storageBucket: "esp32---demo-ac37f.appspot.com",
   messagingSenderId: "465358325818",
   appId: "1:465358325818:web:11322d74bef27fc9d38d03",
   measurementId: "G-TT46DMMWTC"

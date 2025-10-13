@@ -268,6 +268,11 @@ def index():
     """Serve the mobile application as the primary view"""
     return render_template('mobile.html')
 
+@app.route('/desktop')
+def desktop():
+    """Serve the desktop application page"""
+    return render_template('index.html')
+
 @app.route('/mobile')
 def mobile():
     """Serve the mobile application page"""
