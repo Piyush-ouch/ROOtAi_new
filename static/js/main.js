@@ -1299,7 +1299,7 @@ function startAutoRefresh() {
     autoRefreshInterval = setInterval(() => {
         loadRealtimeSensorData();
         loadSensorHistory();
-    }, 60000); // 10 seconds
+    }, 600000); // 10 minutes
 }
 
 /**
