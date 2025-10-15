@@ -1,4 +1,117 @@
 /**
+ * Formats a single sensor reading into an HTML card for display.
+ * @param {object} data - A single sensor reading object.
+ * @param {string} title - The title for the card (e.g., "Live Status" or a timestamp).
+ * @returns {string} - An HTML string representing the card.
+ */
+function formatSensorDataForDisplay(data, title) {
+    const env = data.environment || {};
+    const rain = data.rain || {};
+
+    const temp = env.temperature !== undefined ? `${env.temperature}°C` : 'N/A';
+    const humidity = env.humidity !== undefined ? `${env.humidity}%` : 'N/A';
+    const rainCount = (rain.precipitation !== undefined ? rain.precipitation : (rain.count !== undefined ? rain.count : 'N/A'));
+
+    let probesHtml = '';
+    // Check if the probes object exists and is not empty
+    if (data.probes && Object.keys(data.probes).length > 0) {
+        probesHtml += '<h4 class="font-semibold text-gray-700 mt-3 mb-1 col-span-2">Soil Probes:</h4>';
+        
+        Object.entries(data.probes).forEach(([probeName, probeData]) => {
+            const displayName = probeName.charAt(0).toUpperCase() + probeName.slice(1).replace(/(\d+)/, ' $1');
+            
+            const pMoisture = probeData.soil_moisture !== undefined ? `${probeData.soil_moisture.toFixed(1)}%` : 'N/A';
+            const pTemp = probeData.soil_temperature !== undefined ? `${probeData.soil_temperature.toFixed(1)}°C` : 'N/A';
+            const pHumidity = probeData.soil_humidity !== undefined ? `${probeData.soil_humidity.toFixed(1)}%` : 'N/A';
+
+            probesHtml += `
+                <div class="col-span-2 pl-2 border-l-2 border-gray-200 mt-2">
+                    <strong class="text-gray-600">${displayName}</strong>
+                    <div class="flex justify-between text-xs text-gray-500"><span>Moisture:</span><span class="font-semibold text-black">${pMoisture}</span></div>
+                    <div class="flex justify-between text-xs text-gray-500"><span>Temperature:</span><span class="font-semibold text-black">${pTemp}</span></div>
+                    <div class="flex justify-between text-xs text-gray-500"><span>Humidity:</span><span class="font-semibold text-black">${pHumidity}</span></div>
+                </div>
+            `;
+        });
+    } else {
+         probesHtml = '<p class="col-span-2 text-sm text-gray-400 mt-2">No probe data available.</p>';
+    }
+
+    return `
+        <div class="sensor-card">
+            <h3 class="font-bold text-md text-gray-800 border-b pb-2 mb-2">${title}</h3>
+            <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                <span class="text-gray-600">Air Temp:</span><span class="font-medium text-right">${temp}</span>
+                <span class="text-gray-600">Air Humidity:</span><span class="font-medium text-right">${humidity}</span>
+                <span class="text-gray-600">Rain Count:</span><span class="font-medium text-right">${rainCount}</span>
+                ${probesHtml}
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Fetches the live_status from the backend and displays it.
+ */
+async function fetchCurrentStatus() {
+    const displayContainer = document.getElementById('data-display-container');
+    displayContainer.innerHTML = `<p class="text-center text-gray-500 py-4">Loading Current Status...</p>`;
+
+    try {
+        // This API endpoint is already configured in app.py to get data from /live_status
+        const response = await fetch('/api/rtdb/sensor-data/latest');
+        if (!response.ok) {
+            throw new Error('Failed to fetch live data.');
+        }
+        const data = await response.json();
+        
+        // Use the helper function to format the data and display it
+        displayContainer.innerHTML = formatSensorDataForDisplay(data, 'Live Status');
+
+    } catch (error) {
+        console.error('Error fetching current status:', error);
+        displayContainer.innerHTML = `<p class="text-center text-red-500 py-4">Error loading data.</p>`;
+    }
+}
+
+/**
+ * Fetches the historical_logs from the backend and displays them.
+ */
+async function fetchHistoricalLogs() {
+    const displayContainer = document.getElementById('data-display-container');
+    displayContainer.innerHTML = `<p class="text-center text-gray-500 py-4">Loading History...</p>`;
+
+    try {
+        // This API endpoint is already configured in app.py to get data from /historical_logs
+        const response = await fetch('/api/rtdb/sensor-data/history');
+        if (!response.ok) {
+            throw new Error('Failed to fetch history data.');
+        }
+        const data = await response.json();
+        const readings = data.readings || [];
+
+        if (readings.length === 0) {
+            displayContainer.innerHTML = `<p class="text-center text-gray-500 py-4">No historical logs found.</p>`;
+            return;
+        }
+
+        // Create an HTML card for each historical log and join them together
+        const historyHtml = readings
+            .map(log => {
+                const date = new Date(log.timestamp);
+                const formattedDate = isNaN(date) ? 'Invalid Date' : date.toLocaleString();
+                return formatSensorDataForDisplay(log, formattedDate);
+            })
+            .join('');
+        
+        displayContainer.innerHTML = historyHtml;
+
+    } catch (error) {
+        console.error('Error fetching history:', error);
+        displayContainer.innerHTML = `<p class="text-center text-red-500 py-4">Error loading history.</p>`;
+    }
+}
+/**
  * ROOTAI Mobile Interface - JavaScript
  */
 // Global variables
@@ -294,11 +407,18 @@ function showMapLoading() {
 }
 
 /** Center map on user's current location (with graceful fallback) */
+/** Center map on user's current location (with graceful fallback) */
 function locateUserOnMap() {
-    if (!map || !navigator.geolocation) return;
+    if (!map || !navigator.geolocation) {
+        alert('Geolocation is not supported by your browser.');
+        return;
+    }
+    
     const options = { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 };
+    
     navigator.geolocation.getCurrentPosition(
         (pos) => {
+            // SUCCESS: This part runs if location is found
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
             map.setView([lat, lng], 16);
@@ -309,8 +429,25 @@ function locateUserOnMap() {
                 L.circle([lat, lng], { radius: acc, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.1 }).addTo(map);
             }
         },
-        () => {
-            // If denied or failed, keep default center silently
+        (error) => {
+            // ERROR: This part runs if location fails
+            let errorMessage = 'Could not get your location. ';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMessage += 'You denied the request for Geolocation.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMessage += 'Location information is unavailable.';
+                    break;
+                case error.TIMEOUT:
+                    errorMessage += 'The request to get user location timed out.';
+                    break;
+                case error.UNKNOWN_ERROR:
+                    errorMessage += 'An unknown error occurred.';
+                    break;
+            }
+            // Show an alert to the user explaining the problem
+            alert(errorMessage + '\nPlease ensure you are on a secure (HTTPS) connection and have allowed location permissions in your browser settings.');
         },
         options
     );
@@ -1034,6 +1171,7 @@ async function logout() {
  * Set up event listeners
  */
 function setupEventListeners() {
+    
     // Connect DOOT button
     const connectBtn = document.getElementById('connect-doot-btn');
     if (connectBtn) {
@@ -1126,6 +1264,18 @@ function setupEventListeners() {
     if (returnBtn) {
         returnBtn.addEventListener('click', returnToMainMap);
     }
+
+    // START: Insert these new listeners
+    const showCurrentBtn = document.getElementById('show-current-btn');
+    if (showCurrentBtn) {
+        showCurrentBtn.addEventListener('click', fetchCurrentStatus);
+    }
+
+    const showHistoryBtn = document.getElementById('show-history-btn');
+    if (showHistoryBtn) {
+        showHistoryBtn.addEventListener('click', fetchHistoricalLogs);
+    }
+    // END: End of new listeners
 }
 
 /**
