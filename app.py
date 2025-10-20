@@ -1,3 +1,5 @@
+
+from firebase_admin import auth
 #!/usr/bin/env python3
 """
 ROOTAI Precision Agriculture Platform - Flask Backend
@@ -484,6 +486,42 @@ def diagnose_plant():
     except Exception as e:
         logger.error(f"Error in diagnosis: {e}")
         return jsonify({"error": "Internal server error"}), 500
+    
+# ### ADD THIS NEW ROUTE ###
+@app.route('/api/user/field')
+def get_user_field():
+    """Get a user's field by their Firebase UID from the auth token."""
+    try:
+        if not firestore or not firebase_admin:
+            return jsonify({"error": "Firebase not initialized"}), 500
+        
+        # Get the token from the request header
+        id_token = request.headers.get('Authorization').split('Bearer ')[1]
+        
+        # Verify the token to get the user's UID securely
+        decoded_token = firebase_admin.auth.verify_id_token(id_token)
+        uid = decoded_token['uid']
+        
+        db = firestore.client()
+        
+        # Query the 'fields' collection for a document where 'userId' matches the user's UID
+        fields_ref = db.collection('fields')
+        query = fields_ref.where('userId', '==', uid).limit(1)
+        docs = query.stream()
+
+        # Get the first result if it exists
+        field_doc = next(docs, None)
+        
+        if field_doc:
+            logger.info(f"Found saved field for user {uid}")
+            return jsonify(field_doc.to_dict())
+        else:
+            logger.info(f"No saved field found for user {uid}")
+            return jsonify({}), 404 # Return an empty object if no field is found
+            
+    except Exception as e:
+        logger.error(f"Error fetching user field: {e}")
+        return jsonify({"error": "Internal server error"}), 500
 
 @app.route('/api/market-trends')
 def get_market_trends():
@@ -646,6 +684,56 @@ def process_new_sensor_reading(reading_data):
             
     except Exception as e:
         logger.error(f"Error processing sensor reading: {e}")
+        
+@app.route('/api/fields')
+def get_user_fields():
+    """Get all fields for the authenticated user"""
+    try:
+        if not firestore or not firebase_admin:
+            return jsonify({"error": "Firebase not initialized"}), 500
+        
+        # 1. Get and check Authorization header
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            logger.error("Authentication Error: No Bearer token provided.")
+            return jsonify({"error": "No authorization token provided"}), 401
+            
+        id_token = auth_header.split('Bearer ')[1]
+        
+        # 2. Verify token securely
+        try:
+            # Explicitly verify the token
+            decoded_token = auth.verify_id_token(id_token)
+            uid = decoded_token['uid']
+        except Exception as auth_error:
+            # CATCH THE AUTH FAILURE and return 401
+            logger.error(f"Authentication Error: Failed to verify ID token. {auth_error}")
+            return jsonify({"error": "Invalid or expired token. Please log in again."}), 401
+        
+        # 3. Proceed with Firestore query if authentication passed
+        db = firestore.client()
+        fields_ref = db.collection('fields')
+        query = fields_ref.where('userId', '==', uid)
+        docs = query.stream()
+
+        # Convert documents to list (rest of your existing logic)
+        fields = []
+        for doc in docs:
+            field_data = doc.to_dict()
+            if 'boundary' in field_data and isinstance(field_data['boundary'], str):
+                try:
+                    field_data['boundary'] = json.loads(field_data['boundary'])
+                except:
+                    pass
+            fields.append(field_data)
+        
+        logger.info(f"Found {len(fields)} fields for user {uid}")
+        return jsonify({"fields": fields})
+            
+    except Exception as e:
+        # CATCH GENERIC SERVER ERRORS (e.g., Firestore connection issue)
+        logger.error(f"CRITICAL Server Error fetching user fields (Non-Auth related): {e}", exc_info=True)
+        return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
