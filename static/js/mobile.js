@@ -1,4 +1,122 @@
 /**
+ * Formats a single sensor reading into an HTML card for display.
+ * @param {object} data - A single sensor reading object.
+ * @param {string} title - The title for the card (e.g., "Live Status" or a timestamp).
+ * @returns {string} - An HTML string representing the card.
+ */
+function formatSensorDataForDisplay(data, title) {
+    const env = data.environment || {};
+    const rain = data.rain || {};
+
+    const temp = env.temperature !== undefined ? `${env.temperature}°C` : 'N/A';
+    const humidity = env.humidity !== undefined ? `${env.humidity}%` : 'N/A';
+    const rainCount = (rain.precipitation !== undefined ? rain.precipitation : (rain.count !== undefined ? rain.count : 'N/A'));
+
+    let probesHtml = '';
+    // Check if the probes object exists and is not empty
+    if (data.probes && Object.keys(data.probes).length > 0) {
+        probesHtml += '<h4 class="font-semibold text-gray-700 mt-3 mb-1 col-span-2">Soil Probes:</h4>';
+        
+        Object.entries(data.probes).forEach(([probeName, probeData]) => {
+            const displayName = probeName.charAt(0).toUpperCase() + probeName.slice(1).replace(/(\d+)/, ' $1');
+            
+            const pMoisture = probeData.soil_moisture !== undefined ? `${probeData.soil_moisture.toFixed(1)}%` : 'N/A';
+            const pTemp = probeData.soil_temperature !== undefined ? `${probeData.soil_temperature.toFixed(1)}°C` : 'N/A';
+            const pHumidity = probeData.soil_humidity !== undefined ? `${probeData.soil_humidity.toFixed(1)}%` : 'N/A';
+
+            probesHtml += `
+                <div class="col-span-2 pl-2 border-l-2 border-gray-200 mt-2">
+                    <strong class="text-gray-600">${displayName}</strong>
+                    <div class="flex justify-between text-xs text-gray-500"><span>Moisture:</span><span class="font-semibold text-black">${pMoisture}</span></div>
+                    <div class="flex justify-between text-xs text-gray-500"><span>Temperature:</span><span class="font-semibold text-black">${pTemp}</span></div>
+                    <div class="flex justify-between text-xs text-gray-500"><span>Humidity:</span><span class="font-semibold text-black">${pHumidity}</span></div>
+                </div>
+            `;
+        });
+    } else {
+         probesHtml = '<p class="col-span-2 text-sm text-gray-400 mt-2">No probe data available.</p>';
+    }
+
+    return `
+        <div class="sensor-card">
+            <h3 class="font-bold text-md text-gray-800 border-b pb-2 mb-2">${title}</h3>
+            <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                <span class="text-gray-600">Air Temp:</span><span class="font-medium text-right">${temp}</span>
+                <span class="text-gray-600">Air Humidity:</span><span class="font-medium text-right">${humidity}</span>
+                <span class="text-gray-600">Rain Count:</span><span class="font-medium text-right">${rainCount}</span>
+                ${probesHtml}
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Fetches the live_status from the backend and displays it.
+ */
+async function fetchCurrentStatus() {
+    const displayContainer = document.getElementById('data-display-container');
+    displayContainer.innerHTML = `<p class="text-center text-gray-500 py-4">Loading Current Status...</p>`;
+
+    try {
+        // This API endpoint is already configured in app.py to get data from /live_status
+        const response = await fetch('/api/rtdb/sensor-data/latest');
+        if (!response.ok) {
+            throw new Error('Failed to fetch live data.');
+        }
+        const data = await response.json();
+        
+        // Use the helper function to format the data and display it
+        displayContainer.innerHTML = formatSensorDataForDisplay(data, 'Live Status');
+
+    } catch (error) {
+        console.error('Error fetching current status:', error);
+        displayContainer.innerHTML = `<p class="text-center text-red-500 py-4">Error loading data.</p>`;
+    }
+}
+
+/**
+ * Fetches the historical_logs from the backend and displays them.
+ */
+async function fetchHistoricalLogs() {
+    const displayContainer = document.getElementById('data-display-container');
+    displayContainer.innerHTML = `<p class="text-center text-gray-500 py-4">Loading History...</p>`;
+
+    try {
+        // This API endpoint is already configured in app.py to get data from /historical_logs
+        if (!currentUser) {
+            displayContainer.innerHTML = `<p class="text-center text-gray-500 py-4">Please log in to see your history.</p>`;
+            return;
+        }
+        // Add the current user's ID to the API request
+        const response = await fetch(`/api/rtdb/sensor-data/history?userId=${currentUser.uid}`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch history data.');
+        }
+        const data = await response.json();
+        const readings = data.readings || [];
+
+        if (readings.length === 0) {
+            displayContainer.innerHTML = `<p class="text-center text-gray-500 py-4">No historical logs found.</p>`;
+            return;
+        }
+
+        // Create an HTML card for each historical log and join them together
+        const historyHtml = readings
+            .map(log => {
+                const date = new Date(log.timestamp);
+                const formattedDate = isNaN(date) ? 'Invalid Date' : date.toLocaleString();
+                return formatSensorDataForDisplay(log, formattedDate);
+            })
+            .join('');
+        
+        displayContainer.innerHTML = historyHtml;
+
+    } catch (error) {
+        console.error('Error fetching history:', error);
+        displayContainer.innerHTML = `<p class="text-center text-red-500 py-4">Error loading history.</p>`;
+    }
+}
+/**
  * ROOTAI Mobile Interface - JavaScript
  */
 // Global variables
@@ -32,19 +150,28 @@ document.addEventListener('DOMContentLoaded', function() {
 async function initializeApp() {
     console.log('Initializing ROOTAI Mobile App...');
     
-    // Initialize map first (needed for home screen)
-    initializeMap();
-    
-    // Check authentication status
+    // Set up authentication event listeners first
+    setupAuthEventListeners();
+
     checkAuthenticationStatus();
     
-    // Set up authentication event listeners
-    setupAuthEventListeners();
+    // Wait for Firebase auth state to be determined
+    await new Promise((resolve) => {
+        const unsubscribe = auth.onAuthStateChanged((user) => {
+            unsubscribe(); // Stop listening after first callback
+            resolve();
+        });
+    });
     
-    // If authenticated, initialize the main app
-    if (isAuthenticated) {
-        initializeMainApp();
+    // Now check if user is authenticated
+    if (isAuthenticated && currentUser) {
+        console.log('User is authenticated, initializing main app');
+        // Initialize map first (needed for home screen)
+        initializeMap();
+        await initializeMainApp();
+        showScreen('home');
     } else {
+        console.log('User not authenticated, showing login');
         // Show splash screen for 2 seconds, then login
         setTimeout(() => {
             showScreen('login');
@@ -92,9 +219,8 @@ function initializeMap() {
     // Check if container is visible
     const containerRect = mapContainer.getBoundingClientRect();
     if (containerRect.width === 0 || containerRect.height === 0) {
-        console.log('Map container not visible, will retry...');
-        setTimeout(() => initializeMap(), 500);
-        return;
+        console.log('Map container not visible, exiting init attempt.');
+        return; 
     }
     
     try {
@@ -187,6 +313,155 @@ function initializeMap() {
 }
 
 /**
+ * Load user's saved field from backend and display on map
+ * (This function is now responsible for showing the GRİDDED view)
+ */
+async function loadUserSavedField() {
+    if (!currentUser || !authToken) {
+        console.log('No authenticated user, skipping field load');
+        return;
+    }
+    
+    if (!map) {
+        // If map isn't initialized, exit. The caller (showScreen) will handle retry if necessary.
+        console.log('Map not initialized, delaying field load attempt.');
+        setTimeout(() => loadUserSavedField(), 500); // Re-introducing a small retry for button clicks
+        return;
+    }
+    
+    try {
+        console.log('Loading saved field for user via backend API:', currentUser.uid);
+        
+        // Ask backend for fields 
+        const res = await makeAuthenticatedRequest('/api/fields');
+        if (!res.ok) {
+            console.warn('Failed to fetch fields from backend:', res.status);
+            alert('Failed to load saved field data. Please try again.');
+            return;
+        }
+        const data = await res.json();
+        const fields = data.fields || [];
+        
+        // Find field belonging to user
+        const userField = fields.find(f => f.userId === currentUser.uid) || fields[0];
+        if (!userField) {
+            console.log('No saved field found for user');
+            return;
+        }
+        
+        console.log('Found saved field from backend:', userField.fieldId || 'unknown-id');
+        
+        // Parse boundary data
+        let boundary;
+        try {
+            boundary = typeof userField.boundary === 'string' 
+                ? JSON.parse(userField.boundary) 
+                : userField.boundary;
+        } catch (error) {
+            console.error('Error parsing boundary from backend:', error);
+            return;
+        }
+        
+        // Remove existing drawn layer (if it was drawn on the main map)
+        if (drawnLayer && map.hasLayer(drawnLayer)) {
+            map.removeLayer(drawnLayer);
+            drawnLayer = null;
+        }
+        
+        // Add field boundary to map and set state
+        if (boundary && boundary.type === 'Polygon' && boundary.coordinates) {
+            const coordinates = boundary.coordinates[0].map(coord => [coord[1], coord[0]]);
+            
+            // 1. Create the layer object (but DON'T add it to the main map yet)
+            drawnLayer = L.polygon(coordinates, {
+                color: '#10b981',
+                fillColor: '#10b981',
+                fillOpacity: 0.3,
+                weight: 2
+            });
+            
+            currentFieldId = userField.fieldId || null;
+            
+            const saveBtn = document.getElementById('save-field-btn');
+            if (saveBtn) {
+                saveBtn.disabled = true;
+                saveBtn.textContent = 'Field Saved';
+            }
+            
+            console.log('✅ User field loaded. Switching to Gridded View.');
+
+            // 2. Clear main map section and immediately switch to the gridded satellite view
+            returnToMainMap(); // Ensure the view is reset to show the main section before calling display
+            
+            // Use a short delay to ensure DOM update is complete before displaying the map
+            setTimeout(() => {
+                 displayGriddedField(drawnLayer);
+            }, 50);
+
+        }
+    } catch (error) {
+        console.error('Error loading saved field from backend:', error);
+    }
+}
+
+/**
+ * Delete the currently saved field (backend) and remove from map.
+ * Requires backend endpoint: POST /api/field/delete  { fieldId }
+ */
+async function deleteCurrentField() {
+    if (!currentFieldId) {
+        alert('No saved field to delete');
+        return;
+    }
+
+    if (!confirm('Are you sure you want to delete this saved field? This action cannot be undone.')) {
+        return;
+    }
+
+    try {
+        const res = await makeAuthenticatedRequest('/api/field/delete', {
+            method: 'POST',
+            body: JSON.stringify({ fieldId: currentFieldId })
+        });
+
+        if (res.ok) {
+            // Remove from map
+            if (drawnLayer) {
+                // If it was drawn on either map, remove it
+                if (map.hasLayer(drawnLayer)) map.removeLayer(drawnLayer);
+                if (griddedMap && griddedMap.hasLayer(drawnLayer)) griddedMap.removeLayer(drawnLayer);
+                drawnLayer = null;
+            }
+
+            currentFieldId = null;
+
+            // Re-enable save button
+            const saveBtn = document.getElementById('save-field-btn');
+            if (saveBtn) {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save Field';
+            }
+
+            // Refresh field list
+            await loadFieldList();
+            
+            // Ensure main map view is shown after deletion
+            returnToMainMap();
+
+            alert('Field deleted successfully.');
+            console.log('Field deleted via backend and removed from map');
+        } else {
+            const err = await res.json().catch(() => ({}));
+            alert('Failed to delete field: ' + (err.error || res.status));
+            console.error('Delete field failed:', res.status, err);
+        }
+    } catch (e) {
+        console.error('Network error deleting field:', e);
+        alert('Network error deleting field: ' + e.message);
+    }
+}
+
+/**
  * Hides the main map and shows a new, zoomed-in satellite map with the field and grid.
  * @param {L.Layer} fieldLayer The saved polygon layer.
  */
@@ -223,8 +498,8 @@ function displayGriddedField(fieldLayer) {
             style: { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.2, weight: 2 }
         }).addTo(griddedMap);
         
-        // Generate the grid
-        const gridLayerGroup = generateFieldGrid(fieldLayer.toGeoJSON().geometry);
+        // Generate the grid (using 5m blocks for mobile performance)
+        const gridLayerGroup = generateFieldGrid(fieldLayer.toGeoJSON().geometry, 5); // 5m grid for mobile
         let gridCount = 0;
         
         if (gridLayerGroup) {
@@ -294,11 +569,18 @@ function showMapLoading() {
 }
 
 /** Center map on user's current location (with graceful fallback) */
+/** Center map on user's current location (with graceful fallback) */
 function locateUserOnMap() {
-    if (!map || !navigator.geolocation) return;
+    if (!map || !navigator.geolocation) {
+        alert('Geolocation is not supported by your browser.');
+        return;
+    }
+    
     const options = { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 };
+    
     navigator.geolocation.getCurrentPosition(
         (pos) => {
+            // SUCCESS: This part runs if location is found
             const lat = pos.coords.latitude;
             const lng = pos.coords.longitude;
             map.setView([lat, lng], 16);
@@ -309,8 +591,25 @@ function locateUserOnMap() {
                 L.circle([lat, lng], { radius: acc, color: '#10b981', fillColor: '#10b981', fillOpacity: 0.1 }).addTo(map);
             }
         },
-        () => {
-            // If denied or failed, keep default center silently
+        (error) => {
+            // ERROR: This part runs if location fails
+            let errorMessage = 'Could not get your location. ';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMessage += 'You denied the request for Geolocation.';
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMessage += 'Location information is unavailable.';
+                    break;
+                case error.TIMEOUT:
+                    errorMessage += 'The request to get user location timed out.';
+                    break;
+                case error.UNKNOWN_ERROR:
+                    errorMessage += 'An unknown error occurred.';
+                    break;
+            }
+            // Show an alert to the user explaining the problem
+            alert(errorMessage + '\nPlease ensure you are on a secure (HTTPS) connection and have allowed location permissions in your browser settings.');
         },
         options
     );
@@ -335,6 +634,9 @@ async function loadInitialData() {
         
         // Load current alerts
         await loadCurrentAlerts();
+        
+        // Load user's saved field and display it on map
+        // This is now done in checkAuthenticationStatus/showScreen
         
     } catch (error) {
         console.error('Error loading initial data:', error);
@@ -663,26 +965,34 @@ function updateAlertsDisplay(alerts) {
  */
 function checkAuthenticationStatus() {
     // Listen for authentication state changes
-    auth.onAuthStateChanged((user) => {
+    auth.onAuthStateChanged(async (user) => {
         if (user) {
             currentUser = user;
             isAuthenticated = true;
-            currentScreen = 'home';
+            
+            console.log('User authenticated:', user.email);
             
             // Get the ID token for API calls
-            user.getIdToken().then((token) => {
-                authToken = token;
-            });
-            
-            // Initialize main app if not already done
-            if (currentScreen === 'home') {
-                initializeMainApp();
+            try {
+                authToken = await user.getIdToken();
+                console.log('Auth token obtained');
+            } catch (error) {
+                console.error('Error getting auth token:', error);
             }
+            
+            // CRUCIAL: Trigger field loading *after* authentication is complete
+            // This is what makes the map appear immediately after login/reload.
+            if (currentScreen === 'home' || currentScreen === 'splash') {
+                // Using a short delay to ensure the DOM is ready for the map, 
+                // which is handled by loadUserSavedField retry logic.
+                setTimeout(() => loadUserSavedField(), 500);
+            }
+            
         } else {
             currentUser = null;
             isAuthenticated = false;
             authToken = null;
-            currentScreen = 'splash';
+            console.log('User not authenticated');
         }
     });
 }
@@ -837,8 +1147,18 @@ async function handleLogin() {
         // Get the ID token
         authToken = await user.getIdToken();
         
-        // Update UI
+        // Initialize map if not already done
+        if (!map) {
+            initializeMap();
+        }
+        
+        // Initialize main app
+        await initializeMainApp();
+        
+        // Show home screen
         showScreen('home');
+        
+        console.log('✅ Login successful');
         
     } catch (error) {
         console.error('Login error:', error);
@@ -894,8 +1214,18 @@ async function handleSignup() {
         // Get the ID token
         authToken = await user.getIdToken();
         
-        // Update UI
+        // Initialize map if not already done
+        if (!map) {
+            initializeMap();
+        }
+        
+        // Initialize main app
+        await initializeMainApp();
+        
+        // Show home screen
         showScreen('home');
+        
+        console.log('✅ Signup successful');
         
     } catch (error) {
         console.error('Signup error:', error);
@@ -931,7 +1261,6 @@ async function handleSignup() {
         alert(errorMessage);
     }
 }
-
 /**
  * Handle forgot password
  */
@@ -1034,6 +1363,7 @@ async function logout() {
  * Set up event listeners
  */
 function setupEventListeners() {
+    
     // Connect DOOT button
     const connectBtn = document.getElementById('connect-doot-btn');
     if (connectBtn) {
@@ -1062,25 +1392,23 @@ function setupEventListeners() {
         growthUpload.addEventListener('change', handleGrowthImageUpload);
     }
 
+    // Load Saved Field Button (for manual/programmatic load)
+    const loadFieldBtn = document.getElementById('load-field-btn');
+    if (loadFieldBtn) {
+        loadFieldBtn.addEventListener('click', loadUserSavedField);
+    }
+
     // Draw field button
     const drawBtn = document.getElementById('draw-field-btn');
     if (drawBtn) {
         drawBtn.addEventListener('click', function() {
             // Ensure map is initialized before drawing
             if (!map) {
-                console.log('Map not initialized, initializing now...');
-                initializeMap();
-                // Wait a bit for map to initialize
-                setTimeout(() => {
-                    if (map && drawControl) {
-                        new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
-                    } else {
-                        alert('Map is not ready. Please try again.');
-                    }
-                }, 500);
-            } else {
-                new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
+                console.log('Map not initialized, alerting user.');
+                alert('Map is not ready yet. Please wait a moment for the map to fully load, or check your internet connection.');
+                return;
             }
+            new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
         });
     }
 
@@ -1115,10 +1443,8 @@ function setupEventListeners() {
             showMapLoading();
             // Reset map variable
             map = null;
-            // Try to initialize again
-            setTimeout(() => {
-                initializeMap();
-            }, 500);
+            // Go back to home screen to trigger the initialization logic
+            showScreen('home');
         });
     }
 
@@ -1126,6 +1452,24 @@ function setupEventListeners() {
     if (returnBtn) {
         returnBtn.addEventListener('click', returnToMainMap);
     }
+
+    // Delete field button (remove saved field for this user)
+    const deleteBtn = document.getElementById('delete-field-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', deleteCurrentField);
+    }
+
+    // START: Insert these new listeners
+    const showCurrentBtn = document.getElementById('show-current-btn');
+    if (showCurrentBtn) {
+        showCurrentBtn.addEventListener('click', fetchCurrentStatus);
+    }
+
+    const showHistoryBtn = document.getElementById('show-history-btn');
+    if (showHistoryBtn) {
+        showHistoryBtn.addEventListener('click', fetchHistoricalLogs);
+    }
+    // END: End of new listeners
 }
 
 /**
@@ -1156,24 +1500,37 @@ function showScreen(screenName) {
         // Load screen-specific data
         loadScreenData(screenName);
         
-        // Initialize map if showing home screen and map not initialized
-        if (screenName === 'home' && !map) {
-            // Show loading indicator
-            showMapLoading();
+        // CENTRALIZED MAP LOGIC
+        if (screenName === 'home') {
             
-            // Wait for the screen to be fully visible
-            setTimeout(() => {
-                console.log('Attempting to initialize map for home screen...');
-                initializeMap();
-                
-                // Set timeout to show error if map doesn't load
+            // 1. If map is already initialized, ensure it recalculates its size.
+            if (map) {
+                map.invalidateSize();
+            }
+            
+            // 2. If map is NOT initialized, force initialization after a delay.
+            if (!map) {
+                showMapLoading();
+
+                // Use a short delay (300ms) to ensure the browser has fully rendered the "active" class
                 setTimeout(() => {
-                    if (!map) {
-                        console.log('Map initialization timeout');
+                    initializeMap(); 
+
+                    if (map) {
+                        console.log('✅ Map initialized successfully after DOM render delay. Ready to load field.');
+                        
+                        // CRUCIAL: Force Leaflet to calculate its container size after initialization.
+                        map.invalidateSize(); 
+
+                        // 3. AUTOMATICALLY load the saved map 
+                        loadUserSavedField();
+                        
+                    } else {
+                        console.log('Map failed to initialize, showing error.');
                         showMapError();
                     }
-                }, 5000); // 5 second timeout
-            }, 300); // Longer delay to ensure screen is visible
+                }, 300);
+            }
         }
     }
 }
@@ -1204,12 +1561,7 @@ function updateNavigation(activeScreen) {
 function loadScreenData(screenName) {
     switch (screenName) {
         case 'home':
-            // Ensure map is initialized for home screen
-            if (!map) {
-                setTimeout(() => {
-                    initializeMap();
-                }, 200);
-            }
+            // Initialization handled in showScreen logic above
             break;
         case 'field-analytics':
             initializeAnalyticsChart();
@@ -1375,7 +1727,7 @@ async function saveDrawnField() {
     const geojson = { type: 'Polygon', coordinates: [coordinates] };
 
     const fieldId = `field_${Date.now()}_${Math.random().toString(36).substr(2,6)}`;
-    const payload = { fieldId, fieldName: `Field ${new Date().toLocaleDateString()}` , boundary: geojson };
+    const payload = { fieldId, fieldName: `Field ${new Date().toLocaleDateString()}` , boundary: geojson , userId: currentUser.uid};  //// here are the
 
     try {
         console.log('Saving field with payload:', payload);
