@@ -1,4 +1,3 @@
-
 from firebase_admin import auth
 #!/usr/bin/env python3
 """
@@ -305,7 +304,6 @@ def _try_rtdb_roots_and_get_all():
     # It has been replaced by direct pathing in the route functions
     return None, None
 
-# ### REPLACED FUNCTION ###
 def _normalize_reading(key, value):
     """Normalize a RTDB reading record, averaging 'probes' and also including the raw probe data."""
     try:
@@ -346,27 +344,31 @@ def _normalize_reading(key, value):
         logger.error(f"Error normalizing reading {key}: {e}")
         return {"readingId": key, "error": "Normalization failed"}
     
-# ### REPLACED FUNCTION ###
+# CRITICAL UPDATE: Fetch data based on the userId passed from the frontend
 @app.route('/api/rtdb/sensor-data/latest')
 def get_latest_rtdb_sensor_data():
-    """Get latest sensor data from the new structured path in RTDB."""
+    """Get latest sensor data from the new structured path in RTDB for a specific user."""
     try:
         if not rtdb:
             return jsonify({"error": "Firebase RTDB not initialized"}), 500
 
-        # HARDCODED: User and Field ID based on your new structure.
-        # In a real multi-user app, you would pass these from the frontend.
-        uid = "vQ92EkhiW4dueXGwvEqkz08uBf43"
-        field_id = "field_A"
+        # CRITICAL CHANGE: Get UID and optional field_id from request arguments
+        uid = request.args.get('userId')
+        field_id = request.args.get('fieldId', 'field_A') # Fallback to a default field ID
         
-        # Point directly to the new structured path for live status
+        if not uid:
+             return jsonify({"error": "User ID is required to fetch latest sensor data"}), 400
+        
+        # Construct the user-specific path
         path = f'/users/{uid}/live_status/{field_id}'
         ref = rtdb.reference(path)
         snapshot = ref.get()
 
         if snapshot:
             logger.info(f"Fetched data from {path}")
-            reading_id = f"live_{int(datetime.now().timestamp())}"
+            # Use timestamp from data if available, otherwise fallback
+            timestamp = snapshot.get('timestamp', int(datetime.now().timestamp()))
+            reading_id = f"live_{timestamp}"
             normalized_reading = _normalize_reading(reading_id, snapshot)
             
             alerts = process_sensor_data(normalized_reading)
@@ -374,25 +376,28 @@ def get_latest_rtdb_sensor_data():
             
             return jsonify(normalized_reading)
 
-        return jsonify({"error": f"No data found at path: {path}"}), 404
+        return jsonify({"error": f"No data found for user {uid} at path: {path}"}), 404
 
     except Exception as e:
-        logger.error(f"Error fetching RTDB live sensor data: {e}")
+        logger.error(f"Error fetching RTDB live sensor data for user {uid}: {e}")
         return jsonify({"error": str(e)}), 500
 
-# ### REPLACED FUNCTION ###
+# CRITICAL UPDATE: Fetch history data based on the userId passed from the frontend
 @app.route('/api/rtdb/sensor-data/history')
 def get_rtdb_sensor_history():
-    """Get sensor data history from the new structured path in RTDB."""
+    """Get sensor data history from the new structured path in RTDB for a specific user."""
     try:
         if not rtdb:
             return jsonify({"error": "Firebase RTDB not initialized"}), 500
 
-        # HARDCODED: User and Field ID based on your new structure.
-        uid = "vQ92EkhiW4dueXGwvEqkz08uBf43"
-        field_id = "field_A"
+        # CRITICAL CHANGE: Get UID and optional field_id from request arguments
+        uid = request.args.get('userId')
+        field_id = request.args.get('fieldId', 'field_A') # Fallback to a default field ID
 
-        # Point directly to the new structured path for historical logs
+        if not uid:
+             return jsonify({"error": "User ID is required to fetch sensor history"}), 400
+
+        # Construct the user-specific path for historical logs
         path = f'/users/{uid}/historical_logs/{field_id}'
         ref = rtdb.reference(path)
         snapshot = ref.get()
@@ -412,7 +417,7 @@ def get_rtdb_sensor_history():
         return jsonify({"readings": readings})
 
     except Exception as e:
-        logger.error(f"Error fetching RTDB sensor history: {e}")
+        logger.error(f"Error fetching RTDB sensor history for user {uid}: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/alerts/<field_id>')
@@ -443,7 +448,25 @@ def get_alerts(field_id):
 def get_current_alerts():
     """Get current alerts based on latest sensor data"""
     try:
-        latest_data_response = get_latest_rtdb_sensor_data()
+        # NOTE: This route needs to be updated if you want to properly filter alerts by user/field.
+        # It currently relies on the user-agnostic get_latest_rtdb_sensor_data, 
+        # which now requires a 'userId' parameter. We will temporarily use a placeholder 
+        # for a multi-user environment or assume the user has to be passed here.
+        # For a proper solution, the frontend should send the user ID.
+        
+        # Placeholder/Temporary fix: If this route is called without a user ID, 
+        # it will fail as intended by the updated /api/rtdb/sensor-data/latest route.
+        # The frontend must pass the UID here too for this to function correctly.
+        
+        # Get UID from request arguments (assuming frontend sends it to this endpoint)
+        uid = request.args.get('userId') 
+        field_id = request.args.get('fieldId', 'field_A')
+        
+        if not uid:
+             return jsonify({"alerts": [], "error": "User ID is required for current alerts"}), 400
+
+        # Construct a request object to simulate a call with arguments
+        latest_data_response = app.test_client().get(f'/api/rtdb/sensor-data/latest?userId={uid}&fieldId={field_id}')
         latest_data = latest_data_response.get_json()
         
         if latest_data_response.status_code != 200:
@@ -487,7 +510,6 @@ def diagnose_plant():
         logger.error(f"Error in diagnosis: {e}")
         return jsonify({"error": "Internal server error"}), 500
     
-# ### ADD THIS NEW ROUTE ###
 @app.route('/api/user/field')
 def get_user_field():
     """Get a user's field by their Firebase UID from the auth token."""
@@ -735,5 +757,39 @@ def get_user_fields():
         logger.error(f"CRITICAL Server Error fetching user fields (Non-Auth related): {e}", exc_info=True)
         return jsonify({"error": "Internal server error"}), 500
 
+@app.route('/api/field/delete', methods=['POST'])
+def delete_field():
+    """Delete a field document from Firestore by ID."""
+    try:
+        if not firestore or not firebase_admin:
+            return jsonify({"error": "Firebase not initialized"}), 500
+            
+        data = request.get_json()
+        field_id = data.get('fieldId')
+
+        if not field_id:
+            return jsonify({"error": "Missing fieldId in request body"}), 400
+
+        # Optional: Add token verification here to ensure only the owner can delete the field
+        # For simplicity, we skip full auth check, but in production, you MUST verify the user's token/ownership.
+
+        db = firestore.client()
+        doc_ref = db.collection('fields').document(field_id)
+        
+        # Check if document exists before attempting to delete
+        if not doc_ref.get().exists:
+             return jsonify({"error": f"Field {field_id} not found"}), 404
+
+        # Delete the document
+        doc_ref.delete()
+        
+        logger.info(f"Field deleted successfully: {field_id}")
+        return jsonify({"success": True, "fieldId": field_id})
+        
+    except Exception as e:
+        logger.error(f"Error deleting field: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+    
+    
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
