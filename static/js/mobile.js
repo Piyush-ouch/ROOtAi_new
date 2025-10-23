@@ -3,6 +3,7 @@
  * @param {object} data - A single sensor reading object.
  * @param {string} title - The title for the card (e.g., "Live Status" or a timestamp).
  * @returns {string} - An HTML string representing the card.
+ * @param {string} probeId -The ID read from the QR code (e.g., "P-42-W").
  */
 function formatSensorDataForDisplay(data, title) {
     const env = data.environment || {};
@@ -166,6 +167,10 @@ let gridLayer = null;
 let gridVisible = false;
 let baseLayers = {};
 let activeBaseLayer = null;
+let deploymentMap = null; // New map instance for the tracking screen
+let trackingPolyline = null; // Polyline to show the path
+let watchId = null; // Stores the ID for geolocation watch
+let probeMarker = null; // Marker for the user's live position
 
 // Initialize the mobile app
 document.addEventListener('DOMContentLoaded', function() {
@@ -654,6 +659,67 @@ function locateUserOnMap() {
         },
         options
     );
+}
+async function simulateProbeScan(probeId) {
+    if (!currentUser || !currentFieldId) {
+        alert("Error: Please log in and select/draw a field first.");
+        return;
+    }
+    
+    const messageContainer = document.getElementById('qr-message');
+    const scanBtn = document.getElementById('mock-scan-btn');
+    
+    scanBtn.disabled = true;
+    messageContainer.textContent = `Scanning ${probeId}... Getting device location...`;
+
+    try {
+        // 1. Get the current high-accuracy device location
+        const location = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                (error) => reject(new Error('Failed to get location: ' + error.message)),
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        });
+
+        // 2. Prepare payload
+        const payload = {
+            userId: currentUser.uid,
+            fieldId: currentFieldId,
+            probeId: probeId,
+            latitude: location.lat,
+            longitude: location.lng,
+            timestamp: new Date().toISOString()
+        };
+
+        // 3. Send to backend for storage (Create a new endpoint for this)
+        const res = await makeAuthenticatedRequest('/api/probe/plant', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            throw new Error(`Server failed to save probe location. Status: ${res.status}`);
+        }
+
+        // 4. Success message and instruction
+        messageContainer.innerHTML = `
+            <p class="text-green-600 font-semibold">✅ Probe ${probeId} Planted!</p>
+            <p class="mt-2">Location: ${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}</p>
+            <p class="mt-4 font-bold">Now move towards the next probe!</p>
+        `;
+        
+        // Optionally, show a marker on the main map/gridded map later
+        // loadUserSavedField(); 
+        
+    } catch (error) {
+        console.error('Probe Plantation Error:', error);
+        messageContainer.textContent = `Plantation Failed: ${error.message}`;
+    } finally {
+        scanBtn.disabled = false;
+        // Optionally update the button text/id to simulate scanning the next probe
+        scanBtn.textContent = 'Simulate Scan (Next Probe)'; 
+    }
 }
 
 /**
@@ -1478,7 +1544,7 @@ function setupEventListeners() {
             new L.Draw.Polygon(map, drawControl.options.draw.polygon).enable();
         });
     }
-
+    
     // Save field button
     const saveBtn = document.getElementById('save-field-btn');
     if (saveBtn) {
@@ -1535,6 +1601,40 @@ function setupEventListeners() {
     const showHistoryBtn = document.getElementById('show-history-btn');
     if (showHistoryBtn) {
         showHistoryBtn.addEventListener('click', fetchHistoricalLogs);
+    }
+
+    // START Deploying Probes
+    // DELETE this block if it appears twice inside setupEventListeners()
+
+const startDeploymentBtn = document.getElementById('start-deployment-btn');
+if (startDeploymentBtn) {
+    startDeploymentBtn.addEventListener('click', () => {
+        initializeDeploymentMap();
+        showScreen('deployment-tracking');
+    });
+}
+// DELETE this block if it appears twice inside setupEventListeners()
+
+const qrPlantationBtn = document.getElementById('qr-plantation-btn');
+if (qrPlantationBtn) {
+    qrPlantationBtn.addEventListener('click', () => {
+         showScreen('qr-scanner');
+    });
+}
+
+    // Stop Tracking
+    const stopTrackingBtn = document.getElementById('stop-tracking-btn');
+    if (stopTrackingBtn) {
+        stopTrackingBtn.addEventListener('click', stopLiveTracking);
+    }
+
+    // Mock Scan
+    const mockScanBtn = document.getElementById('mock-scan-btn');
+    if (mockScanBtn) {
+        mockScanBtn.addEventListener('click', () => {
+            // Simulate scanning a probe ID
+            simulateProbeScan('P-42-W'); 
+        });
     }
     // END: End of new listeners
 }
@@ -1643,6 +1743,110 @@ function loadScreenData(screenName) {
         case 'profile':
             updateProfileData();
             break;
+    }
+}
+
+// mobile.js
+
+/**
+ * Initializes the map for the live deployment tracking screen.
+ */
+function initializeDeploymentMap() {
+    const mapContainer = document.getElementById('deployment-map');
+    
+    if (deploymentMap) {
+        deploymentMap.remove(); // Clean up old map instance
+        deploymentMap = null;
+    }
+    
+    // Initialize Leaflet map
+    deploymentMap = L.map('deployment-map', {
+        preferCanvas: true,
+        zoomControl: true,
+        attributionControl: false
+    });
+    
+    // Add satellite layer
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: 'Tiles © Esri',
+        maxZoom: 23
+    }).addTo(deploymentMap);
+
+    // Fit to the current field boundary, if available
+    if (drawnLayer) {
+        deploymentMap.fitBounds(drawnLayer.getBounds(), { padding: [10, 10] });
+    } else {
+        deploymentMap.setView([20.0, 77.0], 10);
+    }
+    
+    // Reset layers
+    if (trackingPolyline) {
+        trackingPolyline.remove();
+    }
+    trackingPolyline = L.polyline([], { color: 'red', weight: 4 }).addTo(deploymentMap);
+
+    if (probeMarker) {
+        probeMarker.remove();
+    }
+    
+    startLiveTracking();
+}
+
+
+/**
+ * Starts continuous geolocation and updates the map and polyline.
+ */
+function startLiveTracking() {
+    if (!navigator.geolocation) {
+        document.getElementById('deployment-status').textContent = 'Geolocation is not supported by this browser.';
+        return;
+    }
+    
+    document.getElementById('deployment-status').textContent = 'Status: Tracking started...';
+    
+    // Options for high accuracy, frequent updates
+    const options = { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 };
+
+    // Watch position to get continuous updates
+    watchId = navigator.geolocation.watchPosition((pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const newLatLng = [lat, lng];
+
+        document.getElementById('deployment-status').textContent = 'Status: Currently tracking...';
+        document.getElementById('deployment-coords').textContent = `Lat: ${lat.toFixed(6)}, Lng: ${lng.toFixed(6)}`;
+        
+        // 1. Update/Move Marker
+        if (!probeMarker) {
+            probeMarker = L.circleMarker(newLatLng, { radius: 8, color: '#0000ff', fillColor: '#3b82f6', fillOpacity: 0.9 }).addTo(deploymentMap);
+        } else {
+            probeMarker.setLatLng(newLatLng);
+        }
+        
+        // 2. Update Path (Polyline)
+        const currentPath = trackingPolyline.getLatLngs();
+        // Only add a new point if the distance is greater than a threshold (e.g., 1 meter)
+        if (currentPath.length === 0 || L.latLng(newLatLng).distanceTo(currentPath[currentPath.length - 1]) > 1) {
+             trackingPolyline.addLatLng(newLatLng);
+        }
+        
+        // 3. Keep map centered on user
+        deploymentMap.setView(newLatLng);
+
+    }, (error) => {
+        document.getElementById('deployment-status').textContent = `Tracking Error: ${error.message}`;
+        console.error('Geolocation Tracking Error:', error);
+    }, options);
+}
+
+/**
+ * Stops continuous geolocation updates.
+ */
+function stopLiveTracking() {
+    if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+        document.getElementById('deployment-status').textContent = 'Status: Tracking stopped.';
     }
 }
 

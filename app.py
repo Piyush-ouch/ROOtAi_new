@@ -789,7 +789,44 @@ def delete_field():
     except Exception as e:
         logger.error(f"Error deleting field: {e}")
         return jsonify({"error": "Internal server error"}), 500
-    
+# app.py (Add this route function below /api/field/save)
+
+@app.route('/api/probe/plant', methods=['POST'])
+def plant_probe_location():
+    """Saves the location of a newly planted probe."""
+    try:
+        if not firestore:
+            return jsonify({"error": "Firebase not initialized"}), 500
+        
+        data = request.get_json()
+        required_fields = ['userId', 'fieldId', 'probeId', 'latitude', 'longitude']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+        
+        db = firestore.client()
+        
+        # Create a GeoPoint object
+        location = create_geopoint(data['latitude'], data['longitude'])
+        
+        probe_data = {
+            'userId': data['userId'],
+            'fieldId': data['fieldId'],
+            'probeId': data['probeId'],
+            'location': location,
+            'plantedAt': datetime.now()
+        }
+        
+        # Store in a new 'probes' collection, using probeId as the document ID
+        doc_ref = db.collection('probes').document(data['probeId'])
+        doc_ref.set(probe_data)
+        
+        logger.info(f"Probe {data['probeId']} location saved for user {data['userId']}")
+        return jsonify({"success": True, "probeId": data['probeId']})
+        
+    except Exception as e:
+        logger.error(f"Error saving probe location: {e}")
+        return jsonify({"error": "Internal server error"}), 500
     
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
