@@ -211,7 +211,7 @@ async function initializeApp() {
     });
     
 
-// Now check if user is authenticated
+// checking if user is authenticated or not
 if (isAuthenticated && currentUser) {
     console.log('User is authenticated, initializing main app');
     // Initialize map first (needed for home screen)
