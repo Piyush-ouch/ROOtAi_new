@@ -295,7 +295,7 @@ function initializeMap() {
     };
 
     // Set the default active layer
-    activeBaseLayer = baseLayers['Street (OSM)'];
+    activeBaseLayer = baseLayers['Satellite (Esri)'];
     map.addLayer(activeBaseLayer);
 
     // Layer control
