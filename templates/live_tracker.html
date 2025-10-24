@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROOTAI - Live Location Tracking</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        /* Mobile container styling to match your app */
+        .mobile-container {
+            max-width: 375px;
+            margin: 0 auto;
+            min-height: 100vh;
+            background: #f8fafc; /* Light gray background */
+            font-family: 'Arial', sans-serif;
+            padding: 20px;
+        }
+
+        /* Header bar style matching your feature headers (e.g., yellow-600 used previously) */
+        .header-bar {
+            background: #f59e0b; /* Yellow-600 tone */
+            color: white;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            margin: -20px -20px 20px -20px; /* Full width header */
+        }
+        .back-btn {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+        }
+        
+        /* Map container styling */
+        #map {
+            height: 80vh; 
+            width: 100%;
+            border-radius: 12px;
+            border: 2px solid #10b981; 
+            box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3); /* Green shadow */
+            z-index: 1; 
+        }
+
+        /* --- CUSTOM ROTATING MARKER CSS --- */
+        .rotating-marker-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px !important; 
+            height: 36px !important;
+            margin-left: -18px !important; 
+            margin-top: -18px !important;  
+            transform-origin: center center;
+            transition: transform 0.2s ease-out;
+        }
+
+        .rotating-marker-icon img {
+            width: 24px; 
+            height: 24px;
+            display: block;
+        }
+        /* --- END CUSTOM ROTATING MARKER CSS --- */
+
+    </style>
+</head>
+<body>
+    <div class="mobile-container">
+        
+        <div class="header-bar">
+             <svg class="back-btn" fill="currentColor" viewBox="0 0 20 20" onclick="window.location.href='/'">
+                <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/>
+            </svg>
+            <h2 class="text-lg font-semibold">Live Field Tracking</h2>
+        </div>
+
+        <div class="p-2 text-center">
+            
+            <div class="p-3 bg-gray-100 rounded-lg shadow-sm mb-3">
+                <div id="status" class="text-sm font-medium text-green-600">Tracking your movement...</div>
+                <div id="coords-display" class="text-xs text-gray-700 mt-1">Lat: N/A, Lng: N/A</div>
+            </div>
+            
+            <div id="map"></div>
+            
+            <button id="stop-tracking-btn" 
+                    class="w-full py-3 rounded-lg bg-red-600 text-white font-semibold mt-4 shadow-md">
+                Stop Tracking
+            </button>
+
+        </div>
+
+    </div>
+
+    <script>
+        let map, marker, lastPosition, trackingPolyline;
+        let deviceHeading = 0;
+        let watchId = null; // CRITICAL: Store the watch ID
+        
+        // --- Custom Marker Icon (SVG Pointer) ---
+        const rotatingPointerIcon = L.divIcon({
+            className: 'rotating-marker-icon', 
+            html: `<img src="data:image/svg+xml;base64,${btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="#00BFFF"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71L12 2z"/></svg>')}" alt="Pointer" />`,
+            iconSize: [36, 36], 
+            iconAnchor: [18, 18]
+        });
+
+        // --- Haversine Distance ---
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3;
+            const φ1 = lat1 * Math.PI/180;
+            const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180;
+            const Δλ = (lon2-lon1) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            return R * c;
+        }
+        
+        // --- Device Orientation Handler ---
+        function handleDeviceOrientation(event) {
+            let heading = event.alpha; 
+            if (typeof event.webkitCompassHeading !== 'undefined') {
+                heading = event.webkitCompassHeading;
+            }
+            
+            if (heading !== null && typeof heading !== 'undefined') {
+                deviceHeading = heading;
+                updateMarkerRotation();
+            }
+        }
+
+        // --- Apply Marker Rotation (CSS Transform) ---
+        function updateMarkerRotation() {
+            if (marker && marker._icon && deviceHeading !== null) {
+                const markerElement = marker._icon; 
+                markerElement.style.transform = markerElement.style.transform.replace(/rotate\(([^)]+)\)/, '') + ` rotate(${deviceHeading}deg)`;
+            }
+        }
+
+        function initMap(latitude, longitude) {
+            const userLocation = [latitude, longitude];
+
+            map = L.map('map', {
+                zoomControl: true,
+                attributionControl: false
+            }).setView(userLocation, 18);
+
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles © Esri',
+                maxZoom: 20
+            }).addTo(map);
+
+            marker = L.marker(userLocation, { icon: rotatingPointerIcon }).addTo(map);
+            marker.bindPopup("You are here").openPopup();
+            
+            trackingPolyline = L.polyline([userLocation], { color: '#ef4444', weight: 4 }).addTo(map);
+
+            lastPosition = { lat: latitude, lng: longitude };
+            
+            // Request permission for device orientation (for iOS/Safari)
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(permissionState => {
+                        if (permissionState === 'granted') {
+                            window.addEventListener('deviceorientation', handleDeviceOrientation);
+                        }
+                    });
+            } else {
+                window.addEventListener('deviceorientation', handleDeviceOrientation);
+            }
+            
+            // Start watching location
+            startLocationWatch();
+        }
+
+        // --- NEW: Start Watching Location ---
+        function startLocationWatch() {
+            if (!navigator.geolocation) {
+                document.getElementById("status").textContent = "Geolocation not supported.";
+                return;
+            }
+
+            const options = { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 };
+            
+            // Use getCurrentPosition just for the initial setup if map isn't initialized yet
+            if (!map) {
+                 navigator.geolocation.getCurrentPosition((position) => {
+                    initMap(position.coords.latitude, position.coords.longitude);
+                    // Then proceed to watch
+                    watchId = navigator.geolocation.watchPosition(updateLocationDisplay, (error) => {
+                        document.getElementById("status").textContent = "Error watching: " + error.message;
+                    }, options);
+                 }, (error) => {
+                    document.getElementById("status").textContent = "Error fetching initial location: " + error.message;
+                 }, options);
+            } else {
+                // Map is already initialized, start watching directly
+                watchId = navigator.geolocation.watchPosition(updateLocationDisplay, (error) => {
+                    document.getElementById("status").textContent = "Error watching: " + error.message;
+                }, options);
+            }
+             document.getElementById("status").textContent = "Tracking your movement...";
+             document.getElementById('stop-tracking-btn').textContent = "Stop Tracking";
+        }
+        
+        // --- NEW: Stop Tracking Function ---
+        function stopTracking() {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+                document.getElementById("status").textContent = "Tracking stopped.";
+                document.getElementById('coords-display').textContent = "Tracking stopped.";
+                document.getElementById('stop-tracking-btn').textContent = "Start Tracking"; // Button acts as a toggle
+            } else {
+                // If the button is used to restart tracking
+                startLocationWatch();
+            }
+        }
+        
+        // --- NEW: Combined Handler to Update Display and Marker ---
+        function updateLocationDisplay(pos) {
+            const latitude = pos.coords.latitude;
+            const longitude = pos.coords.longitude;
+            
+            // Update Coordinates Display
+            document.getElementById('coords-display').textContent = `Lat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)}`;
+            
+            // Update Marker and Polyline
+            updateMarkerAndPolyline(latitude, longitude);
+        }
+
+        function updateMarkerAndPolyline(latitude, longitude) {
+            if (!map || !marker) return;
+
+            const newPosition = { lat: latitude, lng: longitude };
+            const distance = getDistance(lastPosition.lat, lastPosition.lng, latitude, longitude);
+            const newLatLng = [latitude, longitude];
+
+            // Update marker if moved more than 0.5 meters
+            if (distance > 0.5) { 
+                marker.setLatLng(newLatLng);
+                trackingPolyline.addLatLng(newLatLng);
+                map.panTo(newLatLng);
+                lastPosition = newPosition;
+                document.getElementById("status").textContent = `Tracking | Moved ${distance.toFixed(2)} meters`;
+            }
+            updateMarkerRotation(); // Always update rotation
+        }
+
+        // --- Initial Call and Event Listener ---
+        document.addEventListener('DOMContentLoaded', () => {
+             document.getElementById('stop-tracking-btn').addEventListener('click', stopTracking);
+             // Kick off the initial location fetch and watch
+             startLocationWatch();
+        });
+    </script>
+</body>
+</html>
