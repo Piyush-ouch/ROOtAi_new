@@ -212,10 +212,23 @@ async function initializeApp() {
         });
     });
     
-    // NOTE: The rest of the original logic in initializeApp should be removed 
-    // as it is now redundant and confusing after moving the main flow to checkAuthenticationStatus.
 
+// checking if user is authenticated or not
+if (isAuthenticated && currentUser) {
+    console.log('User is authenticated, initializing main app');
+    // Initialize map first (needed for home screen)
+    initializeMap();
+    await initializeMainApp();
+    showScreen('home');
     console.log('Mobile app initialized successfully');
+} else {
+    console.log('User not authenticated, showing login');
+    // Show splash screen for 2 seconds, then login
+    setTimeout(() => {
+        showScreen('login');
+    }, 2000);
+}
+
 }
 
 /**
@@ -240,10 +253,10 @@ function initializeMap() {
     }
     
     // Check if map is already initialized
-    if (map) {
-        console.log('Map already initialized');
-        return;
-    }
+    // if (map) {
+    //     console.log('Map already initialized');
+    //     return;
+    // }
     
     console.log('Initializing map...');
     
@@ -272,9 +285,9 @@ function initializeMap() {
             attributionControl: true
         }).setView([18.5204, 73.8567], 15); // default center
         
-        console.log('✅ Leaflet map created');
+        console.log(' Leaflet map created');
     } catch (error) {
-        console.error('❌ Error creating map:', error);
+        console.error(' Error creating map:', error);
         showMapError();
         return;
     }
@@ -285,19 +298,19 @@ function initializeMap() {
             attribution: '© OpenStreetMap contributors',
             maxZoom: 20
         }),
-        'Satellite (Esri)': L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            attribution: 'Tiles © Esri',
-            maxZoom: 20
-        }),
         'Satellite (Google)': L.tileLayer('https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
             subdomains: ['0','1','2','3'],
             maxZoom: 20,
             attribution: 'Imagery © Google'
+        }),
+        'Satellite (Esri_world)' :L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles © Esri',
+            maxZoom: 20
         })
     };
 
     // Set the default active layer
-    activeBaseLayer = baseLayers['Street (OSM)'];
+    activeBaseLayer = baseLayers['Satellite (Google)'];
     map.addLayer(activeBaseLayer);
 
     // Layer control
