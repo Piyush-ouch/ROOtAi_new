@@ -171,6 +171,8 @@ let deploymentMap = null; // New map instance for the tracking screen
 let trackingPolyline = null; // Polyline to show the path
 let watchId = null; // Stores the ID for geolocation watch
 let probeMarker = null; // Marker for the user's live position
+let html5QrCode = null; // Instance of the scanner class
+let scannerActive = false;
 
 // Initialize the mobile app
 document.addEventListener('DOMContentLoaded', function() {
@@ -451,7 +453,80 @@ async function loadUserSavedField() {
         clearMapStateAndUI(); // Always clean up on error
     }
 }
+// mobile.js
 
+/**
+ * Initializes and starts the QR code scanner.
+ */
+function startScanner() {
+    const readerId = 'reader';
+    const messageContainer = document.getElementById('qr-message');
+    const startStopBtn = document.getElementById('start-stop-scan-btn');
+    
+    if (html5QrCode) {
+        html5QrCode.stop().then(() => { html5QrCode = null; });
+    }
+    
+    html5QrCode = new Html5Qrcode(readerId);
+    
+    const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        // Use the rear camera if available
+        facingMode: "environment" 
+    };
+
+    messageContainer.textContent = "Requesting camera permission...";
+    startStopBtn.textContent = "Scanning...";
+    startStopBtn.disabled = true;
+
+    html5QrCode.start(
+        { facingMode: "environment" }, 
+        config, 
+        // Success callback (when QR code is scanned)
+        (decodedText, decodedResult) => {
+            stopScanner(); // Stop camera instantly after a successful scan
+            handleProbeScan(decodedText);
+        },
+        // Error callback
+        (errorMessage) => {
+            // This is often called continuously, ignore generic errors
+            // console.warn(errorMessage);
+        }
+    )
+    .then(() => {
+        messageContainer.textContent = "Scanning active. Position QR code inside the box.";
+        startStopBtn.textContent = "Stop Scanner";
+        startStopBtn.disabled = false;
+        scannerActive = true;
+    })
+    .catch((err) => {
+        messageContainer.textContent = `Camera Error: ${err}. Please ensure camera is available and permissions are granted.`;
+        startStopBtn.textContent = "Start Scanner";
+        startStopBtn.disabled = false;
+        scannerActive = false;
+        console.error('Camera initialization failed:', err);
+    });
+}
+
+/**
+ * Stops the QR code scanner.
+ */
+function stopScanner() {
+    if (html5QrCode && scannerActive) {
+        html5QrCode.stop().then(() => {
+            const messageContainer = document.getElementById('qr-message');
+            const startStopBtn = document.getElementById('start-stop-scan-btn');
+            
+            messageContainer.textContent = "Scanner stopped.";
+            startStopBtn.textContent = "Start Scanner";
+            startStopBtn.disabled = false;
+            scannerActive = false;
+        }).catch(err => {
+            console.error("Error stopping scanner:", err);
+        });
+    }
+}
 /**
  * Helper function to clean up map layers, reset global field state, 
  * and reset UI state (Draw/Save buttons) to allow drawing a new field.
@@ -1615,6 +1690,19 @@ function setupEventListeners() {
     if (showHistoryBtn) {
         showHistoryBtn.addEventListener('click', fetchHistoricalLogs);
     }
+    // mobile.js (inside setupEventListeners function)
+
+    // START/STOP SCANNER BUTTON
+    const startStopScanBtn = document.getElementById('start-stop-scan-btn');
+    if (startStopScanBtn) {
+        startStopScanBtn.addEventListener('click', () => {
+            if (scannerActive) {
+                stopScanner();
+            } else {
+                startScanner();
+            }
+        });
+    }
 
     // START Deploying Probes
     // DELETE this block if it appears twice inside setupEventListeners()
@@ -1755,6 +1843,14 @@ function loadScreenData(screenName) {
             break;
         case 'profile':
             updateProfileData();
+            break;
+        case 'qr-scanner':
+            startScanner();
+            break;
+        default:
+            if (html5QrCode && scannerActive) {
+                stopScanner();
+            }
             break;
     }
 }
@@ -1995,6 +2091,65 @@ function initializeGrowthChart() {
             }
         }
     });
+}
+
+async function handleProbeScan(probeId) {
+    if (!currentUser || !currentFieldId) {
+        alert("Error: Please log in and select/draw a field first.");
+        return;
+    }
+    
+    const messageContainer = document.getElementById('qr-message');
+    const statusBox = document.getElementById('plantation-status-box');
+
+    statusBox.style.display = 'block';
+    statusBox.textContent = `✅ Scanned Probe ID: ${probeId}. Getting device location...`;
+    messageContainer.textContent = "";
+
+    try {
+        // 1. Get the current high-accuracy device location
+        const location = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                (error) => reject(new Error('Failed to get location: ' + error.message)),
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        });
+
+        // 2. Prepare payload and send to backend
+        const payload = {
+            userId: currentUser.uid,
+            fieldId: currentFieldId,
+            probeId: probeId,
+            latitude: location.lat,
+            longitude: location.lng,
+            timestamp: new Date().toISOString()
+        };
+
+        const res = await makeAuthenticatedRequest('/api/probe/plant', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            throw new Error(errorData.error || `Server failed to save probe location. Status: ${res.status}`);
+        }
+
+        // 3. Success message and instruction
+        statusBox.className = 'p-3 bg-green-100 rounded-lg text-sm font-medium text-green-800';
+        statusBox.innerHTML = `
+            <p class="font-semibold">✅ Probe ${probeId} Planted Successfully!</p>
+            <p class="mt-1">Location: ${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}</p>
+            <p class="mt-2 font-bold">Now move towards the next probe!</p>
+        `;
+        messageContainer.textContent = "Tap 'Start Scanner' again for the next probe.";
+
+    } catch (error) {
+        console.error('Probe Plantation Error:', error);
+        statusBox.className = 'p-3 bg-red-100 rounded-lg text-sm font-medium text-red-800';
+        statusBox.textContent = `❌ Plantation Failed: ${error.message}`;
+    }
 }
 
 /** Save drawn field to backend */

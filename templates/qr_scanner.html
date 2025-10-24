@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ROOTAI – Probe Scanner</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    
+
+    <style>
+        /* Mobile container style matching your main app */
+        .mobile-container {
+            max-width: 375px;
+            margin: 0 auto;
+            min-height: 100vh;
+            background: #f8fafc; /* light background matching your screenshot */
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Header bar style to match main app's feature/navigation headers */
+        .header-bar {
+            background: #ef8b03; /* Used a deep orange/brown for distinct feature header */
+            color: white;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            /* Negative margin moves the header to the edge of the mobile view */
+            margin: -20px -20px 20px -20px; 
+        }
+
+        /* Styling for the back button (using an SVG placeholder for now) */
+        .back-btn {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+        }
+
+        /* Custom style for the QR Reader box border */
+        #reader {
+            border: 2px solid #a855f7; /* Purple border to match the QR button color */
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="mobile-container p-5">
+        
+        <div class="header-bar">
+           <svg class="back-btn" fill="currentColor" viewBox="0 0 20 20" onclick="window.location.href='/'">
+    <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/>
+</svg>
+            <h2 class="text-lg font-semibold">Probe QR Scanner</h2>
+        </div>
+
+        <div class="flex flex-col items-center justify-center text-center">
+            
+            <h1 class="text-xl font-bold text-gray-800 mb-4">Start Field Scan</h1>
+            
+            <div id="reader" class="w-full max-w-sm h-64 rounded-xl overflow-hidden mb-4"></div>
+            
+            <div id="status" class="w-full max-w-sm p-3 bg-gray-100 text-gray-700 rounded-lg font-medium shadow-sm">
+                Initializing camera…
+            </div>
+            
+            <button id="retryBtn" class="w-full max-w-sm py-3 rounded-lg bg-purple-600 text-white font-semibold mt-6 shadow-md" style="display:none;">
+                Scan Next Probe
+            </button>
+        </div>
+
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.1/firebase-app.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/10.12.1/firebase-firestore.js";
+
+        /* ---------------- FIREBASE CONFIG ---------------- */
+        // NOTE: Firestore requires the modular SDK import method used above.
+        const firebaseConfig = {
+            apiKey: "AIzaSyAMF-H37hakWbtwGfy8-wvTWV_5RtYoUmY",
+            authDomain: "esp32---demo-ac37f.firebaseapp.com",
+            databaseURL: "https://esp32---demo-ac37f-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "esp32---demo-ac37f",
+            storageBucket: "esp32---demo-ac37f.firebasestorage.app",
+            messagingSenderId: "465358325818",
+            appId: "1:465358325818:web:11322d74bef27fc9d38d03",
+            measurementId: "G-TT46DMMWTC"
+        };
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        
+        /* ---------------- OFFLINE QUEUE SETUP ---------------- */
+        let offlineQueue = JSON.parse(localStorage.getItem("offlineQueue")) || [];
+
+        function saveOffline(data) {
+            offlineQueue.push(data);
+            localStorage.setItem("offlineQueue", JSON.stringify(offlineQueue));
+        }
+
+        async function syncOffline() {
+            if (offlineQueue.length === 0) return;
+            document.getElementById('status').innerText = `Syncing ${offlineQueue.length} pending scans…`;
+            for (const data of offlineQueue) {
+                try {
+                    // Use addDoc for modular SDK
+                    await addDoc(collection(db, "probes"), data); 
+                } catch (e) {
+                    console.error("Sync error:", e);
+                    return;
+                }
+            }
+            offlineQueue = [];
+            localStorage.removeItem("offlineQueue");
+            document.getElementById('status').innerText = "All offline scans synced!";
+        }
+
+        window.addEventListener("online", syncOffline);
+
+        /* ---------------- QR SCANNER INITIALIZATION ---------------- */
+        const html5QrCode = new Html5Qrcode("reader");
+        const qrConfig = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+        async function startScanner() {
+            document.getElementById('status').innerText = "Scanning for QR…";
+            // Ensure the previous stop has finished before starting a new one
+            try {
+                if (html5QrCode.isScanning) await html5QrCode.stop();
+            } catch (e) {}
+
+            html5QrCode.start(
+                { facingMode: "environment" },
+                qrConfig,
+                async (qrText) => {
+                    document.getElementById('status').innerText = `QR Detected: ${qrText}`;
+                    await html5QrCode.stop();
+                    handleQRScan(qrText);
+                },
+                (errorMessage) => {}
+            ).catch(err => {
+                document.getElementById('status').innerText = `Error: Cannot start camera. (${err.name})`;
+                document.getElementById('retryBtn').innerText = "Retry Scan";
+                document.getElementById('retryBtn').style.display = "block";
+            });
+        }
+
+        async function handleQRScan(probeId) {
+            document.getElementById('status').innerText = `Probe ID ${probeId}: Fetching GPS location…`;
+
+            if (!navigator.geolocation) {
+                document.getElementById('status').innerText = "Geolocation not supported!";
+                return;
+            }
+            
+            navigator.geolocation.getCurrentPosition(async (pos) => {
+                const data = {
+                    probe_id: probeId,
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude,
+                    timestamp: new Date(),
+                    user_id: "rootai_user", // TODO: Replace with authenticated user ID
+                    field_id: "field_A", // TODO: Replace with currently active field ID
+                    status: "active"
+                };
+
+                try {
+                    if (navigator.onLine) {
+                        // Use addDoc for modular SDK
+                        await addDoc(collection(db, "scans"), data); 
+                        document.getElementById('status').innerText = "✅ Scan saved successfully! Move towards the next probe.";
+                    } else {
+                        saveOffline(data);
+                        document.getElementById('status').innerText = "📦 Saved offline, will sync later! Move towards the next probe.";
+                    }
+                } catch (e) {
+                    console.error("Firebase save error:", e);
+                    saveOffline(data);
+                    document.getElementById('status').innerText = "⚠️ Error, saved offline!";
+                }
+
+                document.getElementById('retryBtn').innerText = "Scan Next Probe";
+                document.getElementById('retryBtn').style.display = "block";
+
+            }, () => {
+                document.getElementById('status').innerText = "Unable to get location! Try again.";
+                document.getElementById('retryBtn').innerText = "Retry Scan";
+                document.getElementById('retryBtn').style.display = "block";
+            }, { enableHighAccuracy: true, timeout: 10000 });
+        }
+
+        document.getElementById('retryBtn').addEventListener('click', () => {
+            document.getElementById('retryBtn').style.display = "none";
+            startScanner();
+        });
+
+        // Initial check for online status to sync and then start scanning
+        if (navigator.onLine) syncOffline();
+        
+        // Start scanner on load
+        startScanner();
+    </script>
+</body>
+</html>

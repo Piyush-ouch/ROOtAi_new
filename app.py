@@ -381,6 +381,51 @@ def get_latest_rtdb_sensor_data():
     except Exception as e:
         logger.error(f"Error fetching RTDB live sensor data for user {uid}: {e}")
         return jsonify({"error": str(e)}), 500
+    
+    
+# app.py
+
+# ... (rest of your imports) ...
+
+# New route to handle serving the QR scanner page
+@app.route('/qr_scanner')
+def qr_scanner_page():
+    """
+    Renders the QR scanner page, securely passing user context from the URL token.
+    The client-side app passes the ID token and fieldId as query parameters.
+    """
+    token = request.args.get('token')
+    field_id = request.args.get('fieldId')
+    user_uid = None
+    
+    if token and firebase_admin:
+        try:
+            # Verify the ID token passed from the frontend securely on the backend
+            decoded_token = auth.verify_id_token(token)
+            user_uid = decoded_token['uid']
+            logger.info(f"QR Scanner requested by verified user: {user_uid}")
+        except Exception as e:
+            logger.error(f"Invalid token received for QR scanner: {e}")
+            # Do not allow access if the token is invalid
+            user_uid = 'UNAUTHORIZED' 
+
+    if not user_uid or not field_id:
+        # Render the template anyway, but the frontend script will block/show error
+        user_uid = user_uid or 'missing_uid'
+        field_id = field_id or 'missing_field'
+
+    return render_template('qr_scanner.html', user_uid=user_uid, field_id=field_id)
+
+
+# ... (rest of your app.py file) ...
+# app.py (Add this new route)
+
+@app.route('/live_tracker')
+def live_tracker_page():
+    """Serve the Leaflet-based Live Location Tracker page."""
+    # NOTE: You must ensure 'live_tracker.html' is placed inside your 'templates' folder
+    # for render_template to find it.
+    return render_template('live_tracker.html')
 
 # CRITICAL UPDATE: Fetch history data based on the userId passed from the frontend
 @app.route('/api/rtdb/sensor-data/history')
